@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import deque
+from datetime import datetime
 import logging
 import time
 from typing import Any
@@ -17,12 +19,26 @@ from .config import AppConfig
 logger = logging.getLogger("energy_hub.engine")
 
 
+def _parse_sample_time(value: str) -> float | None:
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return None
+
+
 class Engine:
     """Central aggregation engine.
 
     Receives normalised readings from all adapters and maintains the current
     "state of the world" that the publisher uses to emit MQTT messages.
     """
+
+    HISTORY_SIZE = 240
 
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
@@ -35,6 +51,14 @@ class Engine:
         self.solarbank: SolarbankReading | None = None
         self.charger_power: float = 0.0
         self.charger_received_at: float = 0.0
+
+        # Keep short histories so residual loads can be derived from
+        # temporally consistent samples instead of mixing meter and charger ticks.
+        self._pv_history: deque[SensorReading] = deque(maxlen=self.HISTORY_SIZE)
+        self._grid_tasmota_history: deque[SensorReading] = deque(maxlen=self.HISTORY_SIZE)
+        self._grid_anker_history: deque[AnkerGridReading] = deque(maxlen=self.HISTORY_SIZE)
+        self._solarbank_history: deque[SolarbankReading] = deque(maxlen=self.HISTORY_SIZE)
+        self._charger_history: deque[tuple[float, float]] = deque(maxlen=self.HISTORY_SIZE)
 
         # --- error counters ---
         self._pv_errors = 0
@@ -57,6 +81,7 @@ class Engine:
             logger.warning("Accepting PV data after %d consecutive errors", self._pv_errors)
         self._pv_errors = 0
         self.pv_roof = reading
+        self._pv_history.append(reading)
 
     def update_grid_tasmota(self, reading: SensorReading) -> None:
         ok, msg = self._validator.validate(reading, self.grid_tasmota, "grid")
@@ -70,16 +95,21 @@ class Engine:
             logger.warning("Accepting grid data after %d consecutive errors", self._grid_errors)
         self._grid_errors = 0
         self.grid_tasmota = reading
+        self._grid_tasmota_history.append(reading)
 
     def update_grid_anker(self, reading: AnkerGridReading) -> None:
         self.grid_anker = reading
+        self._grid_anker_history.append(reading)
 
     def update_solarbank(self, reading: SolarbankReading) -> None:
         self.solarbank = reading
+        self._solarbank_history.append(reading)
 
     def update_charger(self, power: float) -> None:
+        now = time.time()
         self.charger_power = power
-        self.charger_received_at = time.time()
+        self.charger_received_at = now
+        self._charger_history.append((now, power))
 
     # -- grid failover -------------------------------------------------------
 
@@ -143,19 +173,101 @@ class Engine:
             return reading.power, True
         return 0.0, True
 
+    def _reading_sample_time(
+        self,
+        reading: SensorReading | AnkerGridReading | SolarbankReading | None,
+    ) -> float | None:
+        if reading is None:
+            return None
+        if isinstance(reading, SensorReading):
+            return _parse_sample_time(reading.timestamp) or reading.received_at
+        return reading.received_at
+
+    def _aligned_reading(
+        self,
+        history: deque,
+        current: SensorReading | AnkerGridReading | SolarbankReading | None,
+        reference_time: float | None,
+    ) -> SensorReading | AnkerGridReading | SolarbankReading | None:
+        if current is None or reference_time is None or not history:
+            return current
+        for reading in reversed(history):
+            sample_time = self._reading_sample_time(reading)
+            if sample_time is not None and sample_time <= reference_time:
+                return reading
+        return history[0]
+
+    def _aligned_charger_sample(self, reference_time: float | None) -> tuple[float, float]:
+        if not self._charger_history:
+            return 0.0, 0.0
+        if reference_time is None:
+            sample_time, power = self._charger_history[-1]
+            return power, sample_time
+        for sample_time, power in reversed(self._charger_history):
+            if sample_time <= reference_time:
+                return power, sample_time
+        sample_time, power = self._charger_history[0]
+        return power, sample_time
+
+    def _snapshot_reference_time(
+        self,
+        grid_reading: SensorReading | AnkerGridReading | None,
+        grid_stale_timeout: int,
+        pv_reading: SensorReading | None,
+        solarbank: SolarbankReading | None,
+    ) -> float | None:
+        candidates: list[float] = []
+
+        for reading, stale_timeout in (
+            (grid_reading, grid_stale_timeout),
+            (pv_reading, self._cfg.sources.tasmota_pv.stale_timeout),
+            (solarbank, self._cfg.sources.anker.stale_timeout),
+        ):
+            if reading is None or reading.age() > self._stale_grace_deadline(stale_timeout):
+                continue
+            sample_time = self._reading_sample_time(reading)
+            if sample_time is not None:
+                candidates.append(sample_time)
+
+        return min(candidates) if candidates else None
+
     # -- snapshot ------------------------------------------------------------
 
     def snapshot(self) -> dict[str, Any]:
         """Build the full aggregated snapshot for publishing."""
         grid_reading, grid_source = self.active_grid()
 
+        grid_stale_timeout = (
+            self._cfg.sources.anker.stale_timeout
+            if grid_source == "anker"
+            else self._cfg.sources.tasmota_grid.stale_timeout
+        )
+        reference_time = self._snapshot_reference_time(
+            self.grid_anker if grid_source == "anker" else self.grid_tasmota,
+            grid_stale_timeout,
+            self.pv_roof,
+            self.solarbank,
+        )
+
+        if grid_source == "anker":
+            aligned_grid = self._aligned_reading(
+                self._grid_anker_history,
+                self.grid_anker,
+                reference_time,
+            )
+            grid_reading = aligned_grid.to_sensor_reading() if aligned_grid else None
+        elif grid_source == "tasmota":
+            grid_reading = self._aligned_reading(
+                self._grid_tasmota_history,
+                self.grid_tasmota,
+                reference_time,
+            )
+
+        pv_reading = self._aligned_reading(self._pv_history, self.pv_roof, reference_time)
+        sb = self._aligned_reading(self._solarbank_history, self.solarbank, reference_time)
+
         # Grid
         if grid_reading:
-            grid_stale_timeout = (
-                self._cfg.sources.anker.stale_timeout
-                if grid_source == "anker"
-                else self._cfg.sources.tasmota_grid.stale_timeout
-            )
             grid_age = grid_reading.age()
             grid_stale = grid_age > grid_stale_timeout
             grid_power = grid_reading.power
@@ -167,11 +279,10 @@ class Engine:
 
         # PV roof
         pv_power, pv_stale = self._effective_power(
-            self.pv_roof, self._cfg.sources.tasmota_pv.stale_timeout,
+            pv_reading, self._cfg.sources.tasmota_pv.stale_timeout,
         )
 
         # Solarbank / balcony
-        sb = self.solarbank
         sb_age = sb.age() if sb else 0.0
         sb_stale = sb is None or sb_age > self._cfg.sources.anker.stale_timeout
         sb_zeroed = sb is None or sb_age > self._stale_grace_deadline(self._cfg.sources.anker.stale_timeout)
@@ -183,8 +294,12 @@ class Engine:
         sb_pv_4_power = 0.0 if sb_zeroed or sb is None else sb.pv_4_power
 
         # Charger
-        charger_stale = (time.time() - self.charger_received_at) > self._cfg.sources.charger.stale_timeout if self.charger_received_at else True
-        charger = self.charger_power if not charger_stale else 0.0
+        now = time.time()
+        raw_charger_stale = (now - self.charger_received_at) > self._cfg.sources.charger.stale_timeout if self.charger_received_at else True
+        raw_charger = self.charger_power if not raw_charger_stale else 0.0
+        charger_sample, charger_sample_time = self._aligned_charger_sample(reference_time)
+        charger_stale = (now - charger_sample_time) > self._cfg.sources.charger.stale_timeout if charger_sample_time else True
+        charger = charger_sample if not charger_stale else 0.0
 
         # Aggregation
         total_pv = pv_power + sb_output          # AC-bus contribution (what reaches the house)
@@ -215,7 +330,6 @@ class Engine:
         else:
             self_sufficiency_pct = 0.0
 
-        now = time.time()
         return {
             # Grid
             "grid": {
@@ -230,7 +344,7 @@ class Engine:
             # PV roof
             "pv_roof": {
                 "power": round(pv_power, 1),
-                "energy": round(self.pv_roof.energy_import, 3) if self.pv_roof else 0.0,
+                "energy": round(pv_reading.energy_import, 3) if pv_reading else 0.0,
                 "stale": pv_stale,
             },
             # PV balcony (solarbank)
@@ -261,6 +375,7 @@ class Engine:
             # Charger
             "charger": {
                 "power": round(charger, 1),
+                "raw_power": round(raw_charger, 1),
                 "stale": charger_stale,
             },
             # House load

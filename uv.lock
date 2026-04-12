@@ -121,7 +121,7 @@ wheels = [
 [[package]]
 name = "anker-solix-api"
 version = "3.5.4"
-source = { directory = "../anker-solix-api" }
+source = { editable = "../anker-solix-api" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -266,14 +266,16 @@ dependencies = [
     { name = "aiohttp" },
     { name = "anker-solix-api" },
     { name = "paho-mqtt" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9" },
-    { name = "anker-solix-api", directory = "../anker-solix-api" },
+    { name = "anker-solix-api", editable = "../anker-solix-api" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 
