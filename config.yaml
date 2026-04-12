@@ -1,0 +1,89 @@
+# energy-hub configuration
+# Environment variables override any value here (prefix: EH_)
+# e.g. EH_MQTT_PASSWORD, EH_ANKER_USER, EH_ANKER_PASSWORD, EH_ANKER_COUNTRY
+
+mqtt:
+  broker: 192.168.1.34
+  port: 1883
+  username: mqttu
+  password: ""  # use EH_MQTT_PASSWORD env var
+  keepalive: 60
+  client_id: energy-hub
+
+# Anker Solix cloud bridge (optional — omit or leave user empty to disable)
+anker:
+  user: ""       # use EH_ANKER_USER env var
+  password: ""   # use EH_ANKER_PASSWORD env var
+  country: "DE"  # use EH_ANKER_COUNTRY env var
+  meter_sn: ""          # auto-detect if blank
+  solarbank_sn: ""      # auto-detect if blank
+  trigger_timeout: 60   # seconds the realtime trigger stays active
+  meter_trigger_interval: 60    # seconds between A17X7 trigger renewals
+  solarbank_status_interval: 5  # seconds between A17C5 status requests
+
+# Input topics (raw sensor data)
+sources:
+  tasmota_pv:
+    topic: tele/tasmota_pv/SENSOR
+    stale_timeout: 120  # seconds before marking stale
+  tasmota_grid:
+    topic: tele/tasmota_grid/SENSOR
+    stale_timeout: 120
+  anker:
+    topic: anker/solix/live/system
+    stale_timeout: 300  # Anker updates less frequently
+  charger:
+    topic: go-eCharger/253899/nrg
+    stale_timeout: 300
+
+# Output topics (clean aggregated data)
+output:
+  prefix: energy
+  # Individual topics are: {prefix}/grid, {prefix}/pv/roof, etc.
+  publish_interval: 10      # seconds between aggregated publishes
+  health_interval: 60       # seconds between health publishes
+  retain: true              # retain state topics (grid, pv, battery, etc.)
+
+# Validation limits for Tasmota SML sensors
+validation:
+  max_total_energy: 150000.0   # kWh
+  max_power: 30000.0           # W
+  min_power: -30000.0          # W
+  grid_min_power: -5600.0      # W (max export)
+  grid_min_total_in: 42000.0   # kWh
+  grid_min_total_out: 28484.0  # kWh
+  pv_min_total_in: 60000.0     # kWh
+  pv_max_power: 5600.0         # W (max generation)
+  max_timestamp_diff: 60       # seconds
+  stale_data_threshold: 120    # seconds
+  meter_noise_tolerance: 0.1   # kWh
+  quality_alert_threshold: 0.5
+  quality_check_window: 20
+  max_meter_rate_kwh_per_10s: 0.5
+  max_power_jump: 15000.0      # W
+  recovery_consensus_count: 3
+  value_history_size: 10
+  max_consecutive_errors: 10
+
+# Stale data policy
+stale_policy:
+  grace_period: 300   # seconds — use last known value, flag stale
+  zero_after: 300     # seconds — zero out power contribution
+
+# Alerting
+alerts:
+  enabled: true
+  webhook_url: ""  # e.g. https://ntfy.sh/your-topic
+  webhook_title: Energy Hub
+  backoff_stages:
+    - 3600    # 1 hour
+    - 43200   # 12 hours
+    - 172800  # 2 days
+    - 604800  # 1 week
+
+# Logging
+logging:
+  file: energy_hub.log
+  max_bytes: 5242880  # 5 MB
+  backup_count: 3
+  level: INFO

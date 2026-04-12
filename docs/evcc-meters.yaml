@@ -1,0 +1,53 @@
+# evcc meter config — updated to use energy-hub MQTT topics
+#
+# Replace the existing `meters:` section in your evcc config (asa) with this.
+# The energy-hub publishes pre-aggregated, validated data to `energy/` topics
+# so evcc no longer parses raw Tasmota or Anker payloads directly.
+#
+# Grid:  energy/grid   → {"power": ..., "energy_import": ..., "energy_export": ..., "source": ..., "stale": ...}
+# PV:    energy/pv/total → {"power": ...}
+# Battery: energy/battery → {"soc": ..., "power": ..., "state": ...}
+
+meters:
+  - name: my_grid
+    type: custom
+    power:
+      source: mqtt
+      topic: energy/grid
+      timeout: 60s
+      jq: .power
+    energy:
+      source: mqtt
+      topic: energy/grid
+      timeout: 60s
+      jq: .energy_import
+
+  - name: my_pv
+    type: custom
+    power:
+      source: mqtt
+      topic: energy/pv/total
+      timeout: 60s
+      jq: .power
+
+  - name: my_battery
+    type: custom
+    power:
+      source: mqtt
+      topic: energy/battery
+      timeout: 60s
+      jq: .power
+    soc:
+      source: mqtt
+      topic: energy/battery
+      timeout: 60s
+      jq: .soc
+
+site:
+  title: Home
+  meters:
+    grid: my_grid
+    pv:
+      - my_pv
+    battery:
+      - my_battery
