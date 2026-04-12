@@ -1,23 +1,23 @@
 [Unit]
 Description=Energy Hub — unified energy monitoring
-After=network-online.target mosquitto.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=chriu
-WorkingDirectory=/home/chriu/anker-solix-api/energy-hub
-ExecStart=/home/chriu/anker-solix-api/energy-hub/.venv/bin/energy-hub -c /home/chriu/anker-solix-api/energy-hub/config.yaml
+WorkingDirectory=/home/chriu/energy-hub
+ExecStart=/home/chriu/.local/bin/uv run --project /home/chriu/energy-hub energy-hub -c /home/chriu/energy-hub/config.yaml
 Restart=on-failure
 RestartSec=10
 
 # Credentials via environment file (not in systemd unit)
-EnvironmentFile=-/home/chriu/anker-solix-api/energy-hub/.env
+EnvironmentFile=-/home/chriu/energy-hub/.env
 
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/home/chriu/anker-solix-api/energy-hub
+ReadWritePaths=/home/chriu/energy-hub
 PrivateTmp=true
 
 [Install]

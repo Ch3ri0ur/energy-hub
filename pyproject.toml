@@ -11,7 +11,7 @@ dependencies = [
     "paho-mqtt>=2.1.0",
     "pyyaml>=6.0",
     "aiohttp>=3.9",
-    "anker-solix-api @ file:///${PROJECT_ROOT}/../anker-solix-api/",
+    "anker-solix-api @ file:///${PROJECT_ROOT}/../../anker-solix-api/",
 ]
 
 [project.scripts]
