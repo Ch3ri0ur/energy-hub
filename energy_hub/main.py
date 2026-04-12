@@ -215,9 +215,15 @@ def main() -> None:
         default="config.yaml",
         help="Path to config.yaml (default: config.yaml)",
     )
+    parser.add_argument(
+        "-e", "--env-file",
+        default=".env",
+        help="Path to .env file (default: .env, use '' to disable)",
+    )
     args = parser.parse_args()
 
-    cfg = load_config(args.config)
+    env_file = args.env_file or None
+    cfg = load_config(args.config, env_file=env_file)
     _setup_logging(cfg)
     _run(cfg)
 

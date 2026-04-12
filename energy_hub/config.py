@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 
 
 def _env(key: str) -> str | None:
@@ -147,8 +148,18 @@ def _merge(dc_class: type, raw: dict[str, Any] | None):
     return dc_class(**{k: v for k, v in raw.items() if k in known})
 
 
-def load_config(path: str | Path = "config.yaml") -> AppConfig:
-    """Load configuration from YAML, then apply EH_ environment overrides."""
+def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = ".env") -> AppConfig:
+    """Load configuration from YAML, then apply EH_ environment overrides.
+
+    If *env_file* exists it is loaded first (without overriding vars already
+    set in the real environment) so the caller no longer needs to
+    ``source .env`` in the shell.
+    """
+    if env_file:
+        env_path = Path(env_file)
+        if env_path.is_file():
+            load_dotenv(env_path, override=False)
+
     path = Path(path)
     raw: dict[str, Any] = {}
     if path.exists():
