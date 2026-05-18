@@ -65,6 +65,15 @@ validation:
   value_history_size: 10
   max_consecutive_errors: 10
 
+# Gas impulse counter (Zigbee2MQTT BK4 meter via door/contact sensor)
+gas:
+  impulse_topic: zigbee2mqtt/GasImpulsCounter
+  sync_topic: energy/gas/set        # publish {"volume_m3": 12345.67} here to sync
+  publish_topic: energy/gas
+  state_file: gas_state.json        # persisted impulse counter
+  impulse_m3: 0.01                  # m³ per tick (BK4)
+  retain: true
+
 # Stale data policy
 stale_policy:
   grace_period: 300   # seconds — use last known value, flag stale

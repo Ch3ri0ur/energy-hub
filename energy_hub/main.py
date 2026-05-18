@@ -17,6 +17,7 @@ from .adapters.tasmota_sml import parse_tasmota_sml
 from .anker_plugin import AnkerPlugin
 from .config import AppConfig, load_config
 from .engine import Engine
+from .gas_tracker import GasTracker
 from .health import HealthMonitor
 from .publisher import Publisher
 
@@ -56,7 +57,7 @@ def _setup_logging(cfg: AppConfig) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_router(cfg: AppConfig, engine: Engine) -> dict[str, object]:
+def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, object]:
     """Return {topic: callback} mapping for local MQTT subscriptions."""
 
     def on_pv(_client, _userdata, msg):
@@ -90,6 +91,11 @@ def _build_router(cfg: AppConfig, engine: Engine) -> dict[str, object]:
         routes[cfg.sources.anker.topic] = on_anker
     if cfg.sources.charger.topic:
         routes[cfg.sources.charger.topic] = on_charger
+
+    # Gas tracker topics
+    for topic in gas.topics:
+        routes[topic] = gas.on_message
+
     return routes
 
 
@@ -118,8 +124,11 @@ def _run(cfg: AppConfig) -> None:
 
     pub = Publisher(client, cfg.output)
 
+    # Gas tracker (independent of engine/publisher)
+    gas = GasTracker(client, cfg.gas)
+
     # Route incoming messages
-    routes = _build_router(cfg, engine)
+    routes = _build_router(cfg, engine, gas)
 
     def on_connect(_client, _userdata, _flags, reason_code, _properties):
         if reason_code == 0:

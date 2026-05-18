@@ -124,6 +124,16 @@ class LoggingConfig:
 
 
 @dataclass
+class GasConfig:
+    impulse_topic: str = "zigbee2mqtt/GasImpulsCounter"
+    sync_topic: str = "energy/gas/set"
+    publish_topic: str = "energy/gas"
+    state_file: str = "gas_state.json"
+    impulse_m3: float = 0.01
+    retain: bool = True
+
+
+@dataclass
 class AppConfig:
     mqtt: MqttConfig = field(default_factory=MqttConfig)
     anker: AnkerConfig = field(default_factory=AnkerConfig)
@@ -133,6 +143,7 @@ class AppConfig:
     stale_policy: StalePolicyConfig = field(default_factory=StalePolicyConfig)
     alerts: AlertConfig = field(default_factory=AlertConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    gas: GasConfig = field(default_factory=GasConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +205,7 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
         alerts.webhook_url = url
 
     logging_cfg = _merge(LoggingConfig, raw.get("logging"))
+    gas = _merge(GasConfig, raw.get("gas"))
 
     return AppConfig(
         mqtt=mqtt,
@@ -204,4 +216,5 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
         stale_policy=stale_policy,
         alerts=alerts,
         logging=logging_cfg,
+        gas=gas,
     )
