@@ -122,10 +122,11 @@ class AlertConfig:
 
 @dataclass
 class LoggingConfig:
-    file: str = "energy_hub.log"
+    file: str = "energy_hub.log"   # "" disables the rotating file
     max_bytes: int = 5 * 1024 * 1024
     backup_count: int = 3
     level: str = "INFO"
+    console: bool = True           # set false under systemd when the file is enough
 
 
 @dataclass

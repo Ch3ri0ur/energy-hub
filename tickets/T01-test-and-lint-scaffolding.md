@@ -6,8 +6,10 @@
 Done on 2026-09-10 as part of the validator overhaul: `pyproject.toml` has the `dev`
 dependency group, pytest and ruff config; `tests/` contains `test_validator.py`,
 `test_engine.py`, `test_timeutil.py` (30 tests, `uv run pytest` green,
-`uv run ruff check energy_hub tests` clean). **Remaining work is steps 2–4 below**
-(conftest stub, `FakeClient`, the adapter/gas/publisher tests).
+`uv run ruff check energy_hub tests` clean). Since then `tests/fake_mqtt.py`, adapter, gas, publisher, router, health, config and
+Anker-plugin tests were added (99 tests). **Remaining:** nothing blocking; add tests
+alongside future changes. The `conftest` stub of step 2 is unnecessary now that the
+Anker import is lazy.
 
 ## Problem
 Every other ticket says "add a test". Also `energy_hub/main.py:17`

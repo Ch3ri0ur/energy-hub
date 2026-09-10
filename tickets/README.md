@@ -9,8 +9,6 @@ T01 first because every other ticket's "Tests" section depends on it.
 |---|-------|------|--------|------|
 | [T01](T01-test-and-lint-scaffolding.md) | Extend the test suite (scaffolding exists) | P1 | M | foundation |
 | [T14](T14-anker-optional-import-and-dependency-pin.md) | Pin anker-solix-api to a git rev (import compat already done) | P3 | XS | packaging |
-| [T18](T18-telegraf-doc-consistency.md) | Telegraf drop-in contradicts header; QoS 0 + persistent | P3 | XS | docs |
-| [T19](T19-systemd-unit-hardening-compat.md) | systemd: uv under ProtectSystem, duplicate logs, --frozen | P3 | XS | ops |
 | [T22](T22-readme-topic-contract.md) | README with MQTT topic contract | P2 | M | docs |
 
 Done directly (2026-09-10), no ticket needed:
@@ -25,6 +23,8 @@ Done directly (2026-09-10), no ticket needed:
 - Anker plugin: alive only while the MQTT session is connected, status (last_error, retries, last_snapshot_at) in health and in the alert text, partial snapshots when only meter or only solarbank reports, guarded message callback, ms timestamp guard, no shutdown traceback (T12, T13, T15).
 - evcc contract: every section carries `stale` and `dead`; per-topic payloads publish `null` for power/soc of dead sources while `energy/aggregated` stays numeric for Telegraf (T16).
 - Config loader warns about unknown keys, coerces scalar types with clear errors, defaults an empty backoff list; stale policy reduced to `zero_after`; engine access serialised with an RLock; webhook delivery moved to a background thread (T17, T21, T23).
+- Telegraf drop-in is a pure inputs file again with QoS 1 and extra stale/age/quality fields; systemd unit uses `--frozen --no-sync`, `Restart=always`, `TimeoutStopSec`; `logging.console` switch to avoid double logging under journald (T18, T19).
+- Adapter tests for Tasmota, charger and Anker snapshot parsing (T01, except the remaining items listed in the ticket).
 
 Dependencies: T01 → all. T14 removes the import stub introduced in T01.  
 

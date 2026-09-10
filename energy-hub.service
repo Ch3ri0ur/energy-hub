@@ -7,9 +7,13 @@ Wants=network-online.target
 Type=simple
 User=chriu
 WorkingDirectory=/home/chriu/energy-hub
-ExecStart=/home/chriu/.local/bin/uv run --project /home/chriu/energy-hub energy-hub -c /home/chriu/energy-hub/config.yaml
-Restart=on-failure
+# --frozen --no-sync: never resolve or install at boot (no network, read-only
+# uv cache under ProtectSystem=strict). Run `uv sync --frozen` when deploying.
+ExecStart=/home/chriu/.local/bin/uv run --frozen --no-sync --project /home/chriu/energy-hub energy-hub -c /home/chriu/energy-hub/config.yaml
+Restart=always
 RestartSec=10
+# Give the hub time to publish the offline health payload and stop the Anker thread.
+TimeoutStopSec=20
 
 # Credentials via environment file (not in systemd unit)
 EnvironmentFile=-/home/chriu/energy-hub/.env
@@ -17,6 +21,8 @@ EnvironmentFile=-/home/chriu/energy-hub/.env
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
+# The project dir must be writable for gas_state.json and energy_hub.log.
+# /home/chriu/anker-solix-api (editable dependency) is only read.
 ReadWritePaths=/home/chriu/energy-hub
 PrivateTmp=true
 

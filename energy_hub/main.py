@@ -37,9 +37,10 @@ def _setup_logging(cfg: AppConfig) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    console = logging.StreamHandler(sys.stderr)
-    console.setFormatter(fmt)
-    root.addHandler(console)
+    if cfg.logging.console or not cfg.logging.file:
+        console = logging.StreamHandler(sys.stderr)
+        console.setFormatter(fmt)
+        root.addHandler(console)
 
     if cfg.logging.file:
         fh = logging.handlers.RotatingFileHandler(

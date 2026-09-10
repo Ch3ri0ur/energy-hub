@@ -97,7 +97,8 @@ alerts:
 
 # Logging
 logging:
-  file: energy_hub.log
+  file: energy_hub.log  # "" to disable the file (e.g. rely on journald only)
   max_bytes: 5242880  # 5 MB
   backup_count: 3
   level: INFO
+  console: true       # false under systemd if you don't want every line twice (journal + file)
