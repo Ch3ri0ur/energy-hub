@@ -59,6 +59,7 @@ class AnkerConfig:
 class SourceConfig:
     topic: str = ""
     stale_timeout: int = 120
+    failback_after: int = 0   # s of continuous fresh data before switching back to this source (0 = at once)
 
 
 @dataclass

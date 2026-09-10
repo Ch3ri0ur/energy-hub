@@ -84,3 +84,80 @@ def test_unexplained_grid_jump_is_held_once():
     assert e.grid_tasmota.power == 300.0            # held
     e.update_grid_tasmota(grid(11250.0, now, imp=42001.06))
     assert e.grid_tasmota.power == 11250.0          # confirmed
+
+
+# --- failover ---------------------------------------------------------------
+
+def anker(power, at, imp=512.0, exp=100.0):
+    return AnkerGridReading(net_grid_power=power, grid_import_energy=imp, grid_export_energy=exp, received_at=at)
+
+
+def test_energy_counters_stay_on_tasmota_during_failover():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now - 600))
+    e.update_grid_anker(anker(250.0, now))
+    s = e.snapshot()["grid"]
+    assert s["source"] == "anker" and s["power"] == 250.0
+    assert s["energy_import"] == 42001.0 and s["energy_source"] == "tasmota" and s["energy_stale"] is True
+
+
+def test_energy_counters_from_anker_only_without_tasmota():
+    e = Engine(AppConfig())
+    e.update_grid_anker(anker(250.0, time.time()))
+    s = e.snapshot()["grid"]
+    assert s["energy_import"] == 512.0 and s["energy_source"] == "anker" and s["energy_stale"] is False
+
+
+def test_stale_anker_used_when_tasmota_never_reported():
+    e = Engine(AppConfig())
+    e.update_grid_anker(anker(250.0, time.time() - 350))  # beyond anker stale_timeout (300)
+    s = e.snapshot()["grid"]
+    # still attributed to anker (was: source "" and silently zero); with the default
+    # stale policy anker's grace deadline equals its stale timeout, so power is zeroed
+    assert s["source"] == "anker" and s["stale"] is True and s["power"] == 0.0
+
+
+def test_both_stale_newer_wins():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now - 250))
+    e.update_grid_anker(anker(250.0, now - 400))
+    assert e.snapshot()["grid"]["source"] == "tasmota"
+    e2 = Engine(AppConfig())
+    e2.update_grid_tasmota(grid(500.0, now - 400))
+    e2.update_grid_anker(anker(250.0, now - 250))
+    assert e2.snapshot()["grid"]["source"] == "anker"
+
+
+def test_failback_hysteresis():
+    cfg = AppConfig()
+    cfg.sources.tasmota_grid.failback_after = 60
+    e = Engine(cfg)
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now - 300))
+    e.update_grid_anker(anker(250.0, now - 100))
+    assert e.snapshot()["grid"]["source"] == "anker"
+    # Tasmota comes back: first reading after a >120 s gap starts a new run
+    e.update_grid_tasmota(grid(510.0, now - 90, imp=42001.5))
+    e.update_grid_anker(anker(255.0, now - 90))
+    assert e.snapshot()["grid"]["source"] == "anker"      # run is 0 s old → hold
+    e.update_grid_tasmota(grid(520.0, now - 40, imp=42001.6))
+    e.update_grid_anker(anker(260.0, now - 40))
+    assert e.snapshot()["grid"]["source"] == "anker"      # run is 50 s → still hold
+    e.update_grid_tasmota(grid(530.0, now - 20, imp=42001.7))
+    e.update_grid_anker(anker(265.0, now - 20))
+    assert e.snapshot()["grid"]["source"] == "tasmota"    # run is 70 s → fail back
+
+
+def test_failback_immediate_when_anker_dies():
+    cfg = AppConfig()
+    cfg.sources.tasmota_grid.failback_after = 60
+    e = Engine(cfg)
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now - 300))
+    e.update_grid_anker(anker(250.0, now - 100))
+    assert e.snapshot()["grid"]["source"] == "anker"
+    e.update_grid_tasmota(grid(510.0, now - 10, imp=42001.5))
+    e.update_grid_anker(anker(255.0, now - 400))          # anker stale now → no reason to hold
+    assert e.snapshot()["grid"]["source"] == "tasmota"

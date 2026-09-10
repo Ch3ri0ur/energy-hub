@@ -14,6 +14,17 @@ from .config import AlertConfig
 
 logger = logging.getLogger("energy_hub.health")
 
+# issue -> (severity, message).  "info" issues are published on the MQTT alert
+# topic but never sent to the webhook.
+ISSUES: dict[str, tuple[str, str]] = {
+    "pv_stale": ("warning", "PV data stale"),
+    "grid_stale": ("warning", "Grid data stale (no meter delivering)"),
+    "grid_tasmota_stale": ("info", "Tasmota grid reader stale, Anker meter covering"),
+    "pv_quality_poor": ("warning", "PV sensor quality poor"),
+    "grid_quality_poor": ("warning", "Grid sensor quality poor"),
+    "anker_plugin_down": ("warning", "Anker cloud plugin not connected"),
+}
+
 
 class AlertManager:
     """Throttles alerts with exponential backoff and delivers via MQTT + webhook."""
@@ -36,32 +47,43 @@ class AlertManager:
         now = time.time()
         current = set(issues)
         recovered = self._last_issues - current
-        messages = {
-            "pv_stale": "PV data stale",
-            "grid_stale": "Grid data stale",
-            "pv_quality_poor": "PV sensor quality poor",
-            "grid_quality_poor": "Grid sensor quality poor",
-            "anker_plugin_down": "Anker cloud plugin not connected",
-        }
 
-        for issue in recovered:
-            self._state.pop(issue, None)
+        # Keep the backoff state of recovered issues for a while: an issue that
+        # recovers and comes back five minutes later (flaky WiFi) must continue its
+        # backoff instead of alerting again at stage 0.
+        cooldown = self._cfg.backoff_stages[-1] if self._cfg.backoff_stages else 0
+        for issue in list(self._state):
+            last, _ = self._state[issue]
+            if issue not in current and now - last > cooldown:
+                del self._state[issue]
 
         for issue in current:
             if not self._should_send(issue, now):
                 continue
-            msg = messages.get(issue, issue)
+            severity, msg = ISSUES.get(issue, ("warning", issue))
             stage = self._advance(issue, now)
             payload = {
                 "issue": issue,
-                "severity": "warning",
+                "severity": severity,
                 "message": msg,
                 "timestamp": now,
                 "context": context,
             }
             publish_cb(payload)
-            self._webhook(msg, "warning", issue, now)
+            if severity != "info":
+                self._webhook(msg, severity, issue, now)
             logger.info("Alert sent: %s (stage %d)", issue, stage)
+
+        for issue in sorted(recovered):
+            payload = {
+                "issue": issue,
+                "severity": "info",
+                "message": f"{ISSUES.get(issue, ('', issue))[1]} — recovered",
+                "timestamp": now,
+                "context": context,
+            }
+            publish_cb(payload)
+            logger.info("Recovered: %s", issue)
 
         if not current and recovered:
             payload = {
@@ -139,11 +161,15 @@ class HealthMonitor:
 
         pv = source_statuses.get("pv_roof", {})
         grid = source_statuses.get("grid_tasmota", {})
+        anker_grid = source_statuses.get("grid_anker", {})
 
         if pv.get("status") in ("stale", "dead"):
             issues.append("pv_stale")
-        if grid.get("status") in ("stale", "dead"):
-            issues.append("grid_stale")
+        if grid.get("status") in ("stale", "dead", "no_data"):
+            if anker_grid.get("status") == "ok":
+                issues.append("grid_tasmota_stale")   # failover is covering
+            elif grid.get("status") != "no_data" or anker_grid.get("status") not in (None, "no_data"):
+                issues.append("grid_stale")
         if pv.get("quality", 1.0) < self._min_quality:
             issues.append("pv_quality_poor")
         if grid.get("quality", 1.0) < self._min_quality:

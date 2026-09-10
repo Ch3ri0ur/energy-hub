@@ -8,7 +8,6 @@ T01 first because every other ticket's "Tests" section depends on it.
 | # | Title | Prio | Effort | Type |
 |---|-------|------|--------|------|
 | [T01](T01-test-and-lint-scaffolding.md) | Extend the test suite (scaffolding exists) | P1 | M | foundation |
-| [T08](T08-grid-failover-energy-counter-jump.md) | Failover swaps cumulative energy counters (kWh jump) | P1 | S | bug |
 | [T10](T10-mqtt-connect-robustness-and-routing.md) | Crash if broker down at start; wildcard routing | P2 | S | robustness |
 | [T11](T11-last-will-offline-health.md) | Last Will so `energy/health` goes offline when hub dies | P2 | XS | robustness |
 | [T12](T12-anker-alive-semantics.md) | `anker_plugin_alive` true before connected; expose errors | P2 | S | bug |
@@ -23,8 +22,6 @@ T01 first because every other ticket's "Tests" section depends on it.
 | [T22](T22-readme-topic-contract.md) | README with MQTT topic contract | P2 | M | docs |
 | [T23](T23-alert-webhook-nonblocking.md) | Webhook blocks main loop; per-issue recovery | P3 | S | quality |
 | [T24](T24-ignore-retained-charger-messages.md) | Retained charger message treated as fresh | P3 | XS | bug |
-| [T25](T25-stale-anker-grid-fallback-symmetry.md) | Stale Anker grid never used (asymmetric fallback) | P3 | XS | bug |
-| [T26](T26-failover-hysteresis-and-alert-noise.md) | Failover flapping + alert spam on Tasmota WiFi drops | P2 | S | ops |
 
 Done directly (2026-09-10), no ticket needed:
 - Validator overhaul → `energy_hub/validation.py` (bounds / first-reading floor / monotonic / rate; held-for-confirmation for counter jumps and power jumps > 3 kW, so single garbage values never reach the output and a poisoned baseline recovers in two readings; forced re-baseline after N failures as backstop; device time never rejects, clock offset tracked). Superseded T06, T07.
@@ -33,9 +30,10 @@ Done directly (2026-09-10), no ticket needed:
 - pytest/ruff scaffolding, 30 tests.
 - Anker import compatibility for both library layouts (T14 steps 0–2).
 - Gas tracker: documented sync key, no phantom impulse on start/retained messages, atomic state file, retained sync cleared, publish on connect and on battery change (T02–T05).
+- Grid failover: energy counters stay on the Tasmota meter (`energy_source`/`energy_stale` fields), stale readings used symmetrically, fail-back hysteresis via `sources.tasmota_grid.failback_after`, alert backoff survives recovery, `grid_tasmota_stale` info issue while Anker covers, per-issue recovery messages (T08, T25, T26).
 
 Dependencies: T01 → all. T14 removes the import stub introduced in T01. T16 and T17
-change the snapshot/stale semantics, so do them before T22 (README). T26 touches `active_grid` like T08/T25, do them together.
+change the snapshot/stale semantics, so do them before T22 (README). 
 
 Owner answers (2026-09-10), already folded into the tickets:
 1. Host timezone probably Europe/Berlin, Tasmota `Timezone` unknown → T09 keeps the clock-offset diagnostics as required.

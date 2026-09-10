@@ -29,6 +29,7 @@ sources:
   tasmota_grid:
     topic: tele/tasmota_grid/SENSOR
     stale_timeout: 120
+    failback_after: 60  # after an outage, Tasmota must deliver for 60 s before it replaces Anker again
   anker:
     topic: anker/solix/live/system
     stale_timeout: 300  # Anker updates less frequently

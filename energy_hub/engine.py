@@ -49,6 +49,8 @@ class Engine:
 
         # --- grid failover tracking ---
         self._active_grid_source: str = ""  # "tasmota" or "anker"
+        # When the current uninterrupted run of Tasmota grid readings started.
+        self._tasmota_fresh_since: float = 0.0
 
     # -- public update methods -----------------------------------------------
 
@@ -66,6 +68,9 @@ class Engine:
         if not ok:
             logger.log(logging.INFO if msg.startswith("held:") else logging.WARNING, "Grid reading: %s", msg)
             return
+        prev = self.grid_tasmota
+        if prev is None or reading.received_at - prev.received_at > self._cfg.sources.tasmota_grid.stale_timeout:
+            self._tasmota_fresh_since = reading.received_at  # (re)start of a continuous run
         self.grid_tasmota = reading
         self._grid_tasmota_history.append(reading)
         self._charger_at_last_grid = self._current_charger_power()
@@ -115,28 +120,49 @@ class Engine:
             return "stale"
         return "dead"
 
+    def _switch_grid_source(self, source: str, why: str = "") -> None:
+        if self._active_grid_source != source:
+            if self._active_grid_source:
+                logger.info("Grid source switched: %s → %s%s", self._active_grid_source, source,
+                            f" ({why})" if why else "")
+            self._active_grid_source = source
+
     def active_grid(self) -> tuple[SensorReading | None, str]:
         """Return (effective_grid_reading_as_SensorReading, source_name).
 
-        Priority: Tasmota (if fresh) → Anker (if fresh) → Tasmota stale → None.
+        Priority: Tasmota (fresh) → Anker (fresh) → whichever stale reading is newer.
+        After Tasmota was stale, ``sources.tasmota_grid.failback_after`` seconds of
+        continuous Tasmota data are required before it replaces a working Anker
+        feed again, so a reader with flaky WiFi does not flap between meters.
         """
-        if self.grid_tasmota and not self._grid_is_stale(self.grid_tasmota):
-            if self._active_grid_source != "tasmota":
-                if self._active_grid_source:
-                    logger.info("Grid source switched: %s → tasmota", self._active_grid_source)
-                self._active_grid_source = "tasmota"
+        cfg = self._cfg.sources
+        tasmota_fresh = self.grid_tasmota is not None and not self._grid_is_stale(self.grid_tasmota)
+        anker_fresh = self.grid_anker is not None and self.grid_anker.age() <= cfg.anker.stale_timeout
+
+        if tasmota_fresh and self._active_grid_source == "anker" and anker_fresh:
+            run = self.grid_tasmota.received_at - self._tasmota_fresh_since
+            if run < cfg.tasmota_grid.failback_after:
+                return self.grid_anker.to_sensor_reading(), "anker"  # hold until the run is long enough
+
+        if tasmota_fresh:
+            self._switch_grid_source("tasmota")
             return self.grid_tasmota, "tasmota"
 
-        if self.grid_anker and self.grid_anker.age() < self._cfg.sources.anker.stale_timeout:
-            if self._active_grid_source != "anker":
-                logger.info("Grid source switched: %s → anker (tasmota stale)", self._active_grid_source)
-                self._active_grid_source = "anker"
+        if anker_fresh:
+            self._switch_grid_source("anker", "tasmota stale")
             return self.grid_anker.to_sensor_reading(), "anker"
 
-        # Tasmota stale but still the best we have
-        if self.grid_tasmota:
-            self._active_grid_source = "tasmota"
-            return self.grid_tasmota, "tasmota"
+        # Neither is fresh: use whichever stale reading is newer (snapshot() zeroes it
+        # once it exceeds the grace deadline).
+        candidates = [
+            (r.received_at, name, r)
+            for name, r in (("tasmota", self.grid_tasmota), ("anker", self.grid_anker))
+            if r is not None
+        ]
+        if candidates:
+            _, name, reading = max(candidates, key=lambda c: c[0])
+            self._switch_grid_source(name, "both stale")
+            return (reading if name == "tasmota" else reading.to_sensor_reading()), name
 
         self._active_grid_source = ""
         return None, ""
@@ -264,6 +290,19 @@ class Engine:
             grid_power = 0.0
             grid_stale = True
 
+        # Cumulative energy counters always come from the official (Tasmota SML) meter
+        # when it has ever reported: a counter that pauses during an outage and then
+        # jumps forward is correct, whereas switching to the Anker meter's own lifetime
+        # totals would produce a step of tens of thousands of kWh in evcc and Grafana.
+        if self.grid_tasmota is not None:
+            energy_reading, energy_source = self.grid_tasmota, "tasmota"
+            energy_stale = self._grid_is_stale(self.grid_tasmota)
+        elif self.grid_anker is not None:
+            energy_reading, energy_source = self.grid_anker.to_sensor_reading(), "anker"
+            energy_stale = self.grid_anker.age() > self._cfg.sources.anker.stale_timeout
+        else:
+            energy_reading, energy_source, energy_stale = None, "", True
+
         # PV roof
         pv_power, pv_stale = self._effective_power(
             pv_reading, self._cfg.sources.tasmota_pv.stale_timeout,
@@ -323,9 +362,11 @@ class Engine:
                 "power": round(grid_power, 1),          # net: positive=import, negative=export
                 "import_w": round(grid_import, 1),      # always positive when importing
                 "export_w": round(grid_export, 1),      # always positive when exporting
-                "energy_import": round(grid_reading.energy_import, 3) if grid_reading else 0.0,
-                "energy_export": round(grid_reading.energy_export, 3) if grid_reading else 0.0,
-                "source": grid_source,
+                "energy_import": round(energy_reading.energy_import, 3) if energy_reading else 0.0,
+                "energy_export": round(energy_reading.energy_export, 3) if energy_reading else 0.0,
+                "energy_source": energy_source,   # meter the counters come from (normally "tasmota")
+                "energy_stale": energy_stale,
+                "source": grid_source,            # meter the power comes from
                 "stale": grid_stale,
             },
             # PV roof
