@@ -13,7 +13,8 @@ def statuses(tasmota="ok", anker="ok", pv="ok", quality=1.0):
 
 
 def mon(**kw):
-    return HealthMonitor(AlertConfig(webhook_url="", **kw), start_time=time.time())
+    kw.setdefault("webhook_url", "")
+    return HealthMonitor(AlertConfig(**kw), start_time=time.time())
 
 
 def test_no_issues_when_all_ok():
@@ -77,3 +78,25 @@ def test_per_issue_recovery_messages():
     m.process({"issues": ["pv_stale", "grid_stale"]}, out.append)
     m.process({"issues": ["grid_stale"]}, out.append)
     assert [a["issue"] for a in out][-1] == "pv_stale" and out[-1]["severity"] == "info"
+
+
+def test_webhook_does_not_block(monkeypatch):
+    import threading
+    import urllib.request
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class Slow:
+        def read(self):
+            started.set()
+            release.wait(5)
+            return b""
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: Slow())
+    m = mon(webhook_url="http://example.invalid/hook")
+    t0 = time.time()
+    m.process({"issues": ["grid_stale"]}, lambda p: None)
+    assert time.time() - t0 < 1.0
+    assert started.wait(2)
+    release.set()

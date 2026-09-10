@@ -77,9 +77,12 @@ gas:
   retain: true
 
 # Stale data policy
+# A source is "stale" once its reading is older than its stale_timeout (last value
+# still used, flagged) and "dead" once older than zero_after (power zeroed in the
+# aggregated blob, null on the per-topic payloads). zero_after is never applied
+# below a source's stale_timeout.
 stale_policy:
-  grace_period: 300   # seconds — use last known value, flag stale
-  zero_after: 300     # seconds — zero out power contribution
+  zero_after: 300     # seconds since last reading
 
 # Alerting
 alerts:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -126,16 +127,20 @@ class AlertManager:
         return next_stage
 
     def _webhook(self, message: str, severity: str, issue: str, ts: float) -> None:
+        """Deliver in a background thread so a slow webhook never stalls the publish loop."""
         if not self._cfg.webhook_url:
             return
+        data = json.dumps({
+            "title": self._cfg.webhook_title,
+            "message": message,
+            "severity": severity,
+            "issue": issue,
+            "timestamp": ts,
+        }).encode()
+        threading.Thread(target=self._post, args=(data,), name="alert-webhook", daemon=True).start()
+
+    def _post(self, data: bytes) -> None:
         try:
-            data = json.dumps({
-                "title": self._cfg.webhook_title,
-                "message": message,
-                "severity": severity,
-                "issue": issue,
-                "timestamp": ts,
-            }).encode()
             req = urllib.request.Request(
                 self._cfg.webhook_url,
                 data=data,

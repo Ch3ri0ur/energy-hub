@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 import yaml
 from dotenv import load_dotenv
+
+logger = logging.getLogger("energy_hub.config")
 
 
 def _env(key: str) -> str | None:
@@ -101,7 +104,9 @@ class ValidationConfig:
 
 @dataclass
 class StalePolicyConfig:
-    grace_period: int = 300
+    # Seconds since the last reading after which a source's power contribution is
+    # zeroed ("dead").  Between the source's stale_timeout and this age the last
+    # value is still used, flagged stale.  Never smaller than the stale_timeout.
     zero_after: int = 300
 
 
@@ -151,12 +156,57 @@ class AppConfig:
 # ---------------------------------------------------------------------------
 
 
-def _merge(dc_class: type, raw: dict[str, Any] | None):
-    """Create a dataclass instance from a raw dict, ignoring unknown keys."""
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off"}
+
+
+def _coerce(value: Any, target: type, name: str) -> Any:
+    """Cast a YAML/env value to the dataclass field type, raising a clear error."""
+    if target is bool:
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in _TRUE:
+            return True
+        if text in _FALSE:
+            return False
+        raise ValueError(f"config: {name} must be a boolean, got {value!r}")
+    if target in (int, float):
+        if isinstance(value, bool):
+            raise ValueError(f"config: {name} must be a number, got {value!r}")
+        try:
+            return target(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"config: {name} must be a {target.__name__}, got {value!r}") from exc
+    if target is str:
+        return "" if value is None else str(value)
+    return value
+
+
+def _merge(dc_class: type, raw: dict[str, Any] | None, section: str = ""):
+    """Create a dataclass instance from a raw dict.
+
+    Unknown keys are ignored but logged (a typo in config.yaml would otherwise
+    silently fall back to the default); scalar values are coerced to the
+    declared field type so a quoted number or "false" string fails at load time
+    instead of deep inside the engine.
+    """
     if not raw:
         return dc_class()
-    known = {f.name for f in dc_class.__dataclass_fields__.values()}
-    return dc_class(**{k: v for k, v in raw.items() if k in known})
+    if not isinstance(raw, dict):
+        raise ValueError(f"config: section '{section or dc_class.__name__}' must be a mapping")
+    hints = get_type_hints(dc_class)
+    known = {f.name for f in fields(dc_class)}
+    unknown = sorted(set(raw) - known)
+    if unknown:
+        logger.warning("config: unknown keys in '%s' ignored: %s", section or dc_class.__name__, ", ".join(unknown))
+    values = {}
+    for k, v in raw.items():
+        if k not in known:
+            continue
+        target = hints.get(k)
+        values[k] = _coerce(v, target, f"{section}.{k}" if section else k) if target in (bool, int, float, str) else v
+    return dc_class(**values)
 
 
 def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = ".env") -> AppConfig:
@@ -177,35 +227,46 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
         with open(path) as f:
             raw = yaml.safe_load(f) or {}
 
-    mqtt = _merge(MqttConfig, raw.get("mqtt"))
+    top_unknown = sorted(set(raw) - set(AppConfig.__dataclass_fields__))
+    if top_unknown:
+        logger.warning("config: unknown top-level sections ignored: %s", ", ".join(top_unknown))
+
+    mqtt = _merge(MqttConfig, raw.get("mqtt"), "mqtt")
     mqtt.password = str(_env_or("MQTT_PASSWORD", mqtt.password))
     mqtt.broker = str(_env_or("MQTT_BROKER", mqtt.broker))
     if port := _env("MQTT_PORT"):
         mqtt.port = int(port)
 
-    anker = _merge(AnkerConfig, raw.get("anker"))
+    anker = _merge(AnkerConfig, raw.get("anker"), "anker")
     anker.user = str(_env_or("ANKER_USER", anker.user))
     anker.password = str(_env_or("ANKER_PASSWORD", anker.password))
     anker.country = str(_env_or("ANKER_COUNTRY", anker.country))
 
     sources_raw = raw.get("sources") or {}
+    unknown_sources = sorted(set(sources_raw) - set(SourcesConfig.__dataclass_fields__))
+    if unknown_sources:
+        logger.warning("config: unknown keys in 'sources' ignored: %s", ", ".join(unknown_sources))
     sources = SourcesConfig(
-        tasmota_pv=_merge(SourceConfig, sources_raw.get("tasmota_pv")),
-        tasmota_grid=_merge(SourceConfig, sources_raw.get("tasmota_grid")),
-        anker=_merge(SourceConfig, sources_raw.get("anker")),
-        charger=_merge(SourceConfig, sources_raw.get("charger")),
+        tasmota_pv=_merge(SourceConfig, sources_raw.get("tasmota_pv"), "sources.tasmota_pv"),
+        tasmota_grid=_merge(SourceConfig, sources_raw.get("tasmota_grid"), "sources.tasmota_grid"),
+        anker=_merge(SourceConfig, sources_raw.get("anker"), "sources.anker"),
+        charger=_merge(SourceConfig, sources_raw.get("charger"), "sources.charger"),
     )
 
-    output = _merge(OutputConfig, raw.get("output"))
-    validation = _merge(ValidationConfig, raw.get("validation"))
-    stale_policy = _merge(StalePolicyConfig, raw.get("stale_policy"))
+    output = _merge(OutputConfig, raw.get("output"), "output")
+    validation = _merge(ValidationConfig, raw.get("validation"), "validation")
+    stale_policy = _merge(StalePolicyConfig, raw.get("stale_policy"), "stale_policy")
 
-    alerts = _merge(AlertConfig, raw.get("alerts"))
+    alerts = _merge(AlertConfig, raw.get("alerts"), "alerts")
     if url := _env("ALERT_WEBHOOK"):
         alerts.webhook_url = url
+    if not alerts.backoff_stages:
+        logger.warning("config: alerts.backoff_stages is empty, using defaults")
+        alerts.backoff_stages = AlertConfig().backoff_stages
+    alerts.backoff_stages = [int(x) for x in alerts.backoff_stages]
 
-    logging_cfg = _merge(LoggingConfig, raw.get("logging"))
-    gas = _merge(GasConfig, raw.get("gas"))
+    logging_cfg = _merge(LoggingConfig, raw.get("logging"), "logging")
+    gas = _merge(GasConfig, raw.get("gas"), "gas")
 
     return AppConfig(
         mqtt=mqtt,

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections import deque
+from functools import wraps
 from typing import Any
 
 from .adapters.base import AnkerGridReading, SensorReading, SolarbankReading
@@ -13,6 +15,18 @@ from .timeutil import parse_iso_epoch
 from .validation import SensorValidator
 
 logger = logging.getLogger("energy_hub.engine")
+
+
+def _locked(method):
+    """Serialise engine access: updates arrive on paho's network thread while
+    snapshot()/source_statuses() run on the main loop thread."""
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class Engine:
@@ -27,6 +41,7 @@ class Engine:
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
         self._validator = SensorValidator(cfg.validation)
+        self._lock = threading.RLock()
 
         # --- latest validated readings (None = never received) ---
         self.pv_roof: SensorReading | None = None
@@ -54,6 +69,7 @@ class Engine:
 
     # -- public update methods -----------------------------------------------
 
+    @_locked
     def update_pv(self, reading: SensorReading) -> None:
         ok, msg = self._validator.validate(reading, "pv")
         if not ok:
@@ -62,6 +78,7 @@ class Engine:
         self.pv_roof = reading
         self._pv_history.append(reading)
 
+    @_locked
     def update_grid_tasmota(self, reading: SensorReading) -> None:
         expected_jump = self._current_charger_power() - self._charger_at_last_grid
         ok, msg = self._validator.validate(reading, "grid", expected_jump=expected_jump)
@@ -83,14 +100,17 @@ class Engine:
             return 0.0
         return self.charger_power
 
+    @_locked
     def update_grid_anker(self, reading: AnkerGridReading) -> None:
         self.grid_anker = reading
         self._grid_anker_history.append(reading)
 
+    @_locked
     def update_solarbank(self, reading: SolarbankReading) -> None:
         self.solarbank = reading
         self._solarbank_history.append(reading)
 
+    @_locked
     def update_charger(self, power: float) -> None:
         now = time.time()
         self.charger_power = power
@@ -105,13 +125,8 @@ class Engine:
         return reading.age() > self._cfg.sources.tasmota_grid.stale_timeout
 
     def _stale_grace_deadline(self, stale_timeout: int) -> int:
-        return max(
-            stale_timeout,
-            min(
-                self._cfg.stale_policy.zero_after,
-                stale_timeout + self._cfg.stale_policy.grace_period,
-            ),
-        )
+        """Age after which a source is dead (power zeroed); never below its stale timeout."""
+        return max(stale_timeout, self._cfg.stale_policy.zero_after)
 
     def _status_for_age(self, age: float, stale_timeout: int) -> str:
         if age <= stale_timeout:
@@ -242,6 +257,7 @@ class Engine:
 
     # -- snapshot ------------------------------------------------------------
 
+    @_locked
     def snapshot(self) -> dict[str, Any]:
         """Build the full aggregated snapshot for publishing."""
         grid_reading, grid_source = self.active_grid()
@@ -431,6 +447,7 @@ class Engine:
 
     # -- health info ---------------------------------------------------------
 
+    @_locked
     def source_statuses(self) -> dict[str, Any]:
         """Per-source health info for the health publisher."""
         now = time.time()

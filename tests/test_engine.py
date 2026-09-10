@@ -177,3 +177,43 @@ def test_dead_flags():
     assert s["battery"]["dead"] and s["charger"]["dead"]
     assert s["pv_balcony"]["dead"]
     assert s["house"]["dead"]
+
+
+# --- stale policy / locking ---------------------------------------------------
+
+def test_dead_deadline_never_below_stale_timeout():
+    cfg = AppConfig()
+    cfg.stale_policy.zero_after = 60
+    e = Engine(cfg)
+    assert e._stale_grace_deadline(120) == 120
+    cfg.stale_policy.zero_after = 300
+    assert e._stale_grace_deadline(120) == 300
+
+
+def test_concurrent_updates_and_snapshots():
+    import threading
+
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))
+    stop = threading.Event()
+    errors = []
+
+    def writer():
+        i = 0
+        while not stop.is_set():
+            try:
+                e.update_charger(float(i % 5000))
+                e.update_solarbank(SolarbankReading(output_power=float(i), received_at=time.time()))
+                i += 1
+            except Exception as exc:  # pragma: no cover
+                errors.append(exc)
+
+    t = threading.Thread(target=writer)
+    t.start()
+    for _ in range(300):
+        s = e.snapshot()
+        assert s["charger"]["raw_power"] == 0.0 or not s["charger"]["stale"]
+    stop.set()
+    t.join()
+    assert not errors
