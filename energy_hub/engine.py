@@ -184,16 +184,21 @@ class Engine:
 
     # -- stale data helpers --------------------------------------------------
 
-    def _effective_power(self, reading: SensorReading | None, stale_timeout: int) -> tuple[float, bool]:
-        """Return (power, is_stale).  Zero after grace period."""
+    def _freshness(
+        self,
+        reading: SensorReading | AnkerGridReading | SolarbankReading | None,
+        stale_timeout: int,
+    ) -> tuple[bool, bool]:
+        """Return ``(stale, dead)`` for the *latest* reading of a source.
+
+        Always evaluate this on the latest reading, never on an aligned history
+        sample: the sample may legitimately be a little older, and a live source
+        must not be flagged stale or dead because of it.
+        """
         if reading is None:
-            return 0.0, True
+            return True, True
         age = reading.age()
-        if age <= stale_timeout:
-            return reading.power, False
-        if age <= self._stale_grace_deadline(stale_timeout):
-            return reading.power, True
-        return 0.0, True
+        return age > stale_timeout, age > self._stale_grace_deadline(stale_timeout)
 
     def _reading_sample_time(
         self,
@@ -215,10 +220,14 @@ class Engine:
     ) -> SensorReading | AnkerGridReading | SolarbankReading | None:
         if current is None or reference_time is None or not history:
             return current
+        skew = self._cfg.validation.max_alignment_skew
         for reading in reversed(history):
             sample_time = self._reading_sample_time(reading)
             if sample_time is not None and sample_time <= reference_time:
-                return reading
+                # Newest sample not after the reference.  If even that one is far
+                # older (a gap in this source, or a slower update interval), aligning
+                # would publish a reading from before the gap: use the current one.
+                return current if reference_time - sample_time > skew else reading
         return current  # nothing old enough: better current than the oldest sample
 
     def _aligned_charger_sample(self, reference_time: float | None) -> tuple[float, float]:
@@ -227,8 +236,11 @@ class Engine:
         if reference_time is None:
             sample_time, power = self._charger_history[-1]
             return power, sample_time
+        skew = self._cfg.validation.max_alignment_skew
         for sample_time, power in reversed(self._charger_history):
             if sample_time <= reference_time:
+                if reference_time - sample_time > skew:
+                    break   # pre-gap sample: fall through to the latest one
                 return power, sample_time
         sample_time, power = self._charger_history[-1]
         return power, sample_time
@@ -297,14 +309,14 @@ class Engine:
 
         # Grid.  "stale" = older than stale_timeout, "dead" = beyond the grace
         # deadline (power zeroed here; the evcc-facing topics publish null instead).
-        if grid_reading:
-            grid_age = grid_reading.age()
-            grid_stale = grid_age > grid_stale_timeout
-            grid_dead = grid_age > self._stale_grace_deadline(grid_stale_timeout)
-            grid_power = 0.0 if grid_dead else grid_reading.power
-        else:
-            grid_power = 0.0
-            grid_stale = grid_dead = True
+        # Power comes from the aligned sample, freshness from the latest reading.
+        latest_grid: SensorReading | AnkerGridReading | None = (
+            self.grid_anker if grid_source == "anker"
+            else self.grid_tasmota if grid_source == "tasmota"
+            else None
+        )
+        grid_stale, grid_dead = self._freshness(latest_grid, grid_stale_timeout)
+        grid_power = 0.0 if grid_dead or grid_reading is None else grid_reading.power
 
         # Cumulative energy counters always come from the official (Tasmota SML) meter
         # when it has ever reported: a counter that pauses during an outage and then
@@ -320,23 +332,18 @@ class Engine:
             energy_reading, energy_source, energy_stale = None, "", True
 
         # PV roof
-        pv_power, pv_stale = self._effective_power(
-            pv_reading, self._cfg.sources.tasmota_pv.stale_timeout,
-        )
-        pv_dead = pv_reading is None or pv_reading.age() > self._stale_grace_deadline(
-            self._cfg.sources.tasmota_pv.stale_timeout
-        )
+        pv_stale, pv_dead = self._freshness(self.pv_roof, self._cfg.sources.tasmota_pv.stale_timeout)
+        pv_power = 0.0 if pv_dead or pv_reading is None else pv_reading.power
 
-        # Solarbank / balcony
-        sb_age = sb.age() if sb else 0.0
-        sb_stale = sb is None or sb_age > self._cfg.sources.anker.stale_timeout
-        sb_zeroed = sb is None or sb_age > self._stale_grace_deadline(self._cfg.sources.anker.stale_timeout)
-        sb_output = 0.0 if sb_zeroed or sb is None else sb.output_power
-        sb_generation = 0.0 if sb_zeroed or sb is None else sb.photovoltaic_power
-        sb_pv_1_power = 0.0 if sb_zeroed or sb is None else sb.pv_1_power
-        sb_pv_2_power = 0.0 if sb_zeroed or sb is None else sb.pv_2_power
-        sb_pv_3_power = 0.0 if sb_zeroed or sb is None else sb.pv_3_power
-        sb_pv_4_power = 0.0 if sb_zeroed or sb is None else sb.pv_4_power
+        # Solarbank / balcony: sb_live is the aligned sample, or None once dead
+        sb_stale, sb_zeroed = self._freshness(self.solarbank, self._cfg.sources.anker.stale_timeout)
+        sb_live = None if sb_zeroed else sb
+        sb_output = sb_live.output_power if sb_live else 0.0
+        sb_generation = sb_live.photovoltaic_power if sb_live else 0.0
+        sb_pv_1_power = sb_live.pv_1_power if sb_live else 0.0
+        sb_pv_2_power = sb_live.pv_2_power if sb_live else 0.0
+        sb_pv_3_power = sb_live.pv_3_power if sb_live else 0.0
+        sb_pv_4_power = sb_live.pv_4_power if sb_live else 0.0
 
         # Charger
         now = time.time()
@@ -354,13 +361,13 @@ class Engine:
         # Pre-split fields for Grafana stacked charts (avoids transform overrides)
         grid_import = max(0.0, grid_power)
         grid_export = max(0.0, -grid_power)
-        battery_power_val = 0.0 if sb_zeroed else (sb.battery_power_signed if sb else 0.0)
+        battery_power_val = sb_live.battery_power_signed if sb_live else 0.0
         battery_charge = max(0.0, battery_power_val)
         battery_discharge = max(0.0, -battery_power_val)
         # Actual panel generation before battery buffering
         sb_pv_gen = sb_generation
         pv_total_generation = pv_power + sb_pv_gen
-        battery_state = sb.battery_state if sb and not sb_zeroed else "unknown"
+        battery_state = sb_live.battery_state if sb_live else "unknown"
 
         # Self-consumption: what fraction of solar is consumed locally (not exported to grid)?
         if total_pv > 0:
@@ -392,7 +399,7 @@ class Engine:
             # PV roof
             "pv_roof": {
                 "power": round(pv_power, 1),
-                "energy": round(pv_reading.energy_import, 3) if pv_reading else 0.0,
+                "energy": round(self.pv_roof.energy_import, 3) if self.pv_roof else 0.0,
                 "stale": pv_stale,
                 "dead": pv_dead,
             },
@@ -416,11 +423,11 @@ class Engine:
             },
             # Battery
             "battery": {
-                "soc": round(sb.battery_soc, 1) if sb and not sb_zeroed else 0.0,
+                "soc": round(sb_live.battery_soc, 1) if sb_live else 0.0,
                 "power": round(battery_power_val, 1),         # signed: positive=charging, negative=discharging
                 "charge_w": round(battery_charge, 1),        # always positive when charging
                 "discharge_w": round(battery_discharge, 1),  # always positive when discharging
-                "energy_wh": round(sb.battery_energy_wh, 1) if sb and not sb_zeroed else 0.0,
+                "energy_wh": round(sb_live.battery_energy_wh, 1) if sb_live else 0.0,
                 "state": battery_state,
                 "stale": sb_stale,
                 "dead": sb_zeroed,

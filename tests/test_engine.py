@@ -217,3 +217,52 @@ def test_concurrent_updates_and_snapshots():
     stop.set()
     t.join()
     assert not errors
+
+
+# --- alignment must never resurrect a pre-gap sample ------------------------
+
+def test_alignment_lookback_is_bounded_for_pv():
+    """A gap in one source must not make the snapshot publish its pre-gap sample
+    (and flag the live source stale/dead) just because another source's sample
+    is a few seconds older than the newest PV reading."""
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_pv(pv(1000.0, now - 402, imp=60001.0))
+    e.update_pv(pv(1500.0, now - 2, imp=60001.2))
+    e.update_grid_tasmota(grid(300.0, now - 8))
+    s = e.snapshot()
+    assert s["pv_roof"] == {"power": 1500.0, "energy": 60001.2, "stale": False, "dead": False}
+    assert s["pv_total"]["dead"] is False
+
+
+def test_anker_grid_is_not_lagged_one_interval_by_solarbank():
+    """The meter updates every ~60 s, the solarbank every 5 s: the previous
+    meter sample must not be chosen whenever the solarbank sample is older."""
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_anker(anker(100.0, now - 63))
+    e.update_grid_anker(anker(900.0, now - 3))
+    e.update_solarbank(SolarbankReading(output_power=50.0, received_at=now - 5))
+    s = e.snapshot()
+    assert s["grid"]["power"] == 900.0 and s["grid"]["stale"] is False
+
+
+def test_charger_alignment_lookback_is_bounded():
+    e = Engine(AppConfig())
+    now = time.time()
+    e._charger_history.append((now - 400, 5000.0))   # before a go-e outage
+    e._charger_history.append((now - 2, 0.0))
+    e.charger_power, e.charger_received_at = 0.0, now - 2
+    e.update_grid_tasmota(grid(300.0, now - 8))
+    assert e.snapshot()["charger"]["power"] == 0.0
+
+
+def test_freshness_flags_follow_latest_reading_not_aligned_sample():
+    e = Engine(AppConfig())
+    now = time.time()
+    for i in range(10):
+        e.update_solarbank(SolarbankReading(output_power=100.0 + i, battery_soc=50.0, received_at=now - 45 + i * 5))
+    e.update_grid_tasmota(grid(500.0, now - 20))
+    s = e.snapshot()
+    assert s["pv_balcony"]["output_power"] == 105.0       # aligned sample (now-20)
+    assert s["battery"]["stale"] is False and s["battery"]["dead"] is False
