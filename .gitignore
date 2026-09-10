@@ -14,5 +14,10 @@ __pycache__/
 *.tmp
 *.DS_Store
 .idea/
-.vscode/gas_state.json
+.vscode/
+.claude/
+
+# runtime state and logs written next to config.yaml
+gas_state.json
 gas_state.json.tmp
+energy_hub.log*
