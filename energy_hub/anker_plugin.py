@@ -16,13 +16,11 @@ import contextlib
 import json
 import logging
 import threading
-import time
 from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
-
 from api.api import AnkerSolixApi
 from api.errors import AnkerSolixError
 

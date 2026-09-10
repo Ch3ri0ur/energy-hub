@@ -79,24 +79,23 @@ class OutputConfig:
 
 @dataclass
 class ValidationConfig:
-    max_total_energy: float = 150000.0
-    max_power: float = 30000.0
-    min_power: float = -30000.0
-    grid_min_power: float = -5600.0
-    grid_min_total_in: float = 42000.0
-    grid_min_total_out: float = 28484.0
-    pv_min_total_in: float = 60000.0
-    pv_max_power: float = 5600.0
-    max_timestamp_diff: int = 60
-    stale_data_threshold: int = 120
-    meter_noise_tolerance: float = 0.1
-    quality_alert_threshold: float = 0.5
-    quality_check_window: int = 20
-    max_meter_rate_kwh_per_10s: float = 0.5
-    max_power_jump: float = 15000.0
-    recovery_consensus_count: int = 3
-    value_history_size: int = 10
-    max_consecutive_errors: int = 10
+    """Limits for Tasmota SML plausibility checks (see energy_hub/validation.py)."""
+
+    max_total_energy: float = 150000.0   # kWh, any cumulative counter
+    max_power: float = 30000.0           # W, grid import ceiling
+    grid_min_power: float = -5600.0      # W, grid export floor (negative)
+    pv_max_power: float = 5600.0         # W, PV generation ceiling
+    grid_min_total_in: float = 42000.0   # kWh, first-reading floor
+    grid_min_total_out: float = 28484.0  # kWh, first-reading floor
+    pv_min_total_in: float = 60000.0     # kWh, first-reading floor
+    meter_noise_tolerance: float = 0.1   # kWh, allowed backwards jitter / rate slack
+    rate_safety_factor: float = 2.0      # multiplier on the physical max energy step
+    power_jump_confirm: float = 3000.0   # W, larger jumps need a confirming 2nd reading (0 = off)
+    max_consecutive_errors: int = 10     # progression failures before forced re-baselining
+    quality_check_window: int = 20       # readings in the rolling quality window
+    quality_alert_threshold: float = 0.5 # alert when rejected fraction exceeds this
+    clock_offset_warn: int = 60          # s, device vs host clock offset to warn about
+    max_alignment_skew: float = 30.0     # s, older reference times disable alignment
 
 
 @dataclass

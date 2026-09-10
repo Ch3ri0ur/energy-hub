@@ -7,7 +7,8 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .config import AlertConfig
 

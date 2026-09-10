@@ -2,33 +2,17 @@
 
 from __future__ import annotations
 
-from collections import deque
-from datetime import datetime
 import logging
 import time
+from collections import deque
 from typing import Any
 
-from .adapters.base import (
-    AnkerGridReading,
-    SensorReading,
-    SensorValidator,
-    SolarbankReading,
-)
+from .adapters.base import AnkerGridReading, SensorReading, SolarbankReading
 from .config import AppConfig
+from .timeutil import parse_iso_epoch
+from .validation import SensorValidator
 
 logger = logging.getLogger("energy_hub.engine")
-
-
-def _parse_sample_time(value: str) -> float | None:
-    text = value.strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-    try:
-        return datetime.fromisoformat(text).timestamp()
-    except ValueError:
-        return None
 
 
 class Engine:
@@ -51,6 +35,9 @@ class Engine:
         self.solarbank: SolarbankReading | None = None
         self.charger_power: float = 0.0
         self.charger_received_at: float = 0.0
+        # Charger power at the time the last grid reading was accepted; the difference
+        # to the current charger power explains legitimate grid power jumps.
+        self._charger_at_last_grid: float = 0.0
 
         # Keep short histories so residual loads can be derived from
         # temporally consistent samples instead of mixing meter and charger ticks.
@@ -60,42 +47,36 @@ class Engine:
         self._solarbank_history: deque[SolarbankReading] = deque(maxlen=self.HISTORY_SIZE)
         self._charger_history: deque[tuple[float, float]] = deque(maxlen=self.HISTORY_SIZE)
 
-        # --- error counters ---
-        self._pv_errors = 0
-        self._grid_errors = 0
-
         # --- grid failover tracking ---
         self._active_grid_source: str = ""  # "tasmota" or "anker"
 
     # -- public update methods -----------------------------------------------
 
     def update_pv(self, reading: SensorReading) -> None:
-        ok, msg = self._validator.validate(reading, self.pv_roof, "pv")
+        ok, msg = self._validator.validate(reading, "pv")
         if not ok:
-            self._pv_errors += 1
-            if msg:
-                logger.warning("PV validation (%d/%d): %s",
-                               self._pv_errors, self._cfg.validation.max_consecutive_errors, msg)
-            if self._pv_errors < self._cfg.validation.max_consecutive_errors:
-                return
-            logger.warning("Accepting PV data after %d consecutive errors", self._pv_errors)
-        self._pv_errors = 0
+            logger.log(logging.INFO if msg.startswith("held:") else logging.WARNING, "PV reading: %s", msg)
+            return
         self.pv_roof = reading
         self._pv_history.append(reading)
 
     def update_grid_tasmota(self, reading: SensorReading) -> None:
-        ok, msg = self._validator.validate(reading, self.grid_tasmota, "grid")
+        expected_jump = self._current_charger_power() - self._charger_at_last_grid
+        ok, msg = self._validator.validate(reading, "grid", expected_jump=expected_jump)
         if not ok:
-            self._grid_errors += 1
-            if msg:
-                logger.warning("Grid validation (%d/%d): %s",
-                               self._grid_errors, self._cfg.validation.max_consecutive_errors, msg)
-            if self._grid_errors < self._cfg.validation.max_consecutive_errors:
-                return
-            logger.warning("Accepting grid data after %d consecutive errors", self._grid_errors)
-        self._grid_errors = 0
+            logger.log(logging.INFO if msg.startswith("held:") else logging.WARNING, "Grid reading: %s", msg)
+            return
         self.grid_tasmota = reading
         self._grid_tasmota_history.append(reading)
+        self._charger_at_last_grid = self._current_charger_power()
+
+    def _current_charger_power(self) -> float:
+        """Charger power if the last charger message is not stale, else 0."""
+        if not self.charger_received_at:
+            return 0.0
+        if time.time() - self.charger_received_at > self._cfg.sources.charger.stale_timeout:
+            return 0.0
+        return self.charger_power
 
     def update_grid_anker(self, reading: AnkerGridReading) -> None:
         self.grid_anker = reading
@@ -179,8 +160,10 @@ class Engine:
     ) -> float | None:
         if reading is None:
             return None
-        if isinstance(reading, SensorReading):
-            return _parse_sample_time(reading.timestamp) or reading.received_at
+        if isinstance(reading, SensorReading) and reading.source in ("pv", "grid"):
+            # Only trust the device clock while it agrees with the host clock.
+            if self._validator.device_time_trusted(reading.source):
+                return parse_iso_epoch(reading.timestamp) or reading.received_at
         return reading.received_at
 
     def _aligned_reading(
@@ -195,7 +178,7 @@ class Engine:
             sample_time = self._reading_sample_time(reading)
             if sample_time is not None and sample_time <= reference_time:
                 return reading
-        return history[0]
+        return current  # nothing old enough: better current than the oldest sample
 
     def _aligned_charger_sample(self, reference_time: float | None) -> tuple[float, float]:
         if not self._charger_history:
@@ -206,7 +189,7 @@ class Engine:
         for sample_time, power in reversed(self._charger_history):
             if sample_time <= reference_time:
                 return power, sample_time
-        sample_time, power = self._charger_history[0]
+        sample_time, power = self._charger_history[-1]
         return power, sample_time
 
     def _snapshot_reference_time(
@@ -248,6 +231,10 @@ class Engine:
             self.pv_roof,
             self.solarbank,
         )
+        if reference_time is not None and time.time() - reference_time > self._cfg.validation.max_alignment_skew:
+            # One source lags far behind (WiFi gap, clock problem): aligning everything
+            # to it would publish old data, so use the latest readings instead.
+            reference_time = None
 
         if grid_source == "anker":
             aligned_grid = self._aligned_reading(
@@ -396,11 +383,14 @@ class Engine:
         now = time.time()
 
         def _status(name: str, reading, stale_timeout: int) -> dict[str, Any]:
+            info: dict[str, Any] = {
+                "quality": round(self._validator.get_data_quality(name), 2),
+                "validation": self._validator.stats(name),
+            }
             if reading is None:
-                return {"status": "no_data", "age": None, "quality": self._validator.get_data_quality(name)}
+                return {"status": "no_data", "age": None, **info}
             age = now - reading.received_at
-            status = self._status_for_age(age, stale_timeout)
-            return {"status": status, "age": round(age, 1), "quality": round(self._validator.get_data_quality(name), 2)}
+            return {"status": self._status_for_age(age, stale_timeout), "age": round(age, 1), **info}
 
         return {
             "pv_roof": _status("pv", self.pv_roof, self._cfg.sources.tasmota_pv.stale_timeout),

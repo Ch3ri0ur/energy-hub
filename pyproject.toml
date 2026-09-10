@@ -15,8 +15,25 @@ dependencies = [
     "anker-solix-api",
 ]
 
+[tool.setuptools.packages.find]
+include = ["energy_hub*"]
+
 [project.scripts]
 energy-hub = "energy_hub.main:main"
 
 [tool.uv.sources]
 anker-solix-api = { path = "../anker-solix-api", editable = true }
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "I"]
+ignore = ["E501"]  # long lines in pre-existing code; tidy per file when touched

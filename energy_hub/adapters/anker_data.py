@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime
 from typing import Any
 
+from ..timeutil import parse_iso_epoch
 from .base import AnkerGridReading, SolarbankReading
 
 logger = logging.getLogger("energy_hub.adapters.anker")
@@ -22,24 +22,10 @@ def _float(val: Any, default: float = 0.0) -> float:
         return default
 
 
-def _parse_iso_epoch(value: Any) -> float | None:
-    if value in (None, ""):
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-    try:
-        return datetime.fromisoformat(text).timestamp()
-    except ValueError:
-        return None
-
-
 def _received_at(data: dict[str, Any], updated_key: str) -> float:
     return (
-        _parse_iso_epoch(data.get(updated_key))
-        or _parse_iso_epoch(data.get("timestamp"))
+        parse_iso_epoch(data.get(updated_key))
+        or parse_iso_epoch(data.get("timestamp"))
         or time.time()
     )
 

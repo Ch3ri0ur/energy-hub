@@ -44,26 +44,27 @@ output:
   health_interval: 60       # seconds between health publishes
   retain: true              # retain state topics (grid, pv, battery, etc.)
 
-# Validation limits for Tasmota SML sensors
+# Plausibility limits for the Tasmota SML sensors (see energy_hub/validation.py).
+# Readings are rejected for physically impossible values. Counter jumps and large
+# power jumps are held until a second reading confirms them, so a single garbage
+# value never reaches the output and a poisoned baseline recovers within two
+# readings. Device timestamps and WiFi gaps never cause rejections.
 validation:
-  max_total_energy: 150000.0   # kWh
-  max_power: 30000.0           # W
-  min_power: -30000.0          # W
-  grid_min_power: -5600.0      # W (max export)
-  grid_min_total_in: 42000.0   # kWh
-  grid_min_total_out: 28484.0  # kWh
-  pv_min_total_in: 60000.0     # kWh
-  pv_max_power: 5600.0         # W (max generation)
-  max_timestamp_diff: 60       # seconds
-  stale_data_threshold: 120    # seconds
-  meter_noise_tolerance: 0.1   # kWh
-  quality_alert_threshold: 0.5
-  quality_check_window: 20
-  max_meter_rate_kwh_per_10s: 0.5
-  max_power_jump: 15000.0      # W
-  recovery_consensus_count: 3
-  value_history_size: 10
-  max_consecutive_errors: 10
+  max_total_energy: 150000.0   # kWh, any cumulative counter
+  max_power: 30000.0           # W, grid import ceiling
+  grid_min_power: -5600.0      # W, grid export floor (max export, negative)
+  pv_max_power: 5600.0         # W, PV generation ceiling
+  grid_min_total_in: 42000.0   # kWh, floor for the first grid reading after start
+  grid_min_total_out: 28484.0  # kWh, floor for the first grid reading after start
+  pv_min_total_in: 60000.0     # kWh, floor for the first PV reading after start
+  meter_noise_tolerance: 0.1   # kWh, allowed backwards jitter
+  rate_safety_factor: 2.0      # energy may rise at most max_power * elapsed * factor
+  power_jump_confirm: 3000.0   # W, power jumps larger than this need a confirming 2nd reading (0 = off)
+  max_consecutive_errors: 10   # last-resort: progression failures before forced re-baseline
+  quality_check_window: 20     # rolling window of readings for the quality ratio
+  quality_alert_threshold: 0.5 # alert when more than this fraction was rejected
+  clock_offset_warn: 60        # s, warn (and stop trusting device time) beyond this
+  max_alignment_skew: 30       # s, skip sample alignment if the reference is older
 
 # Gas impulse counter (Zigbee2MQTT BK4 meter via door/contact sensor)
 gas:
