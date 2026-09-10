@@ -67,3 +67,8 @@ def test_anker_battery_state():
 def test_anker_garbage():
     assert parse_anker_snapshot(b"nope") == (None, None)
     assert parse_anker_snapshot(b"{}") == (None, None)
+
+
+def test_anker_scalar_json_returns_nothing():
+    for payload in (b"42", b"null", b"true", b"[1]"):
+        assert parse_anker_snapshot(payload) == (None, None)

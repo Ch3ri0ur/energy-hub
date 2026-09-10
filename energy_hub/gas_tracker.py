@@ -92,7 +92,7 @@ class GasTracker:
     def _handle_impulse(self, raw: bytes, retained: bool = False) -> None:
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError:
+        except ValueError:   # JSONDecodeError and UnicodeDecodeError
             logger.warning("GasTracker: bad JSON on impulse topic")
             return
         if not isinstance(data, dict):

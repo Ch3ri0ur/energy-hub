@@ -54,6 +54,9 @@ def parse_anker_snapshot(
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
         logger.warning("Failed to parse Anker snapshot: %s", exc)
         return None, None
+    if not isinstance(data, dict):
+        logger.warning("Anker snapshot is not a JSON object: %r", payload[:80])
+        return None, None
 
     grid: AnkerGridReading | None = None
     if "net_grid_power" in data or "grid_to_home_power" in data:

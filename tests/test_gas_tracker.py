@@ -134,3 +134,11 @@ def test_battery_change_publishes_without_impulse(tracker):
     assert last_payload(c)["battery"] == 90
     contact(tracker, False, battery=90)
     assert len(c.topics(PUB)) == n + 1
+
+
+def test_non_utf8_and_non_object_payloads_ignored(tracker):
+    t, client = tracker
+    for raw in (b"\xff\xfe", b"42", b"[1]", b"not json"):
+        t.on_message(None, None, FakeMessage(IMP, raw))
+        t.on_message(None, None, FakeMessage(SYNC, raw))
+    assert t._impulse_count == 0

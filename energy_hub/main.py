@@ -8,6 +8,7 @@ import logging.handlers
 import signal
 import sys
 import time
+from functools import wraps
 
 import paho.mqtt.client as mqtt
 
@@ -57,8 +58,30 @@ def _setup_logging(cfg: AppConfig) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _guarded(topic: str, callback):
+    """Wrap a paho message callback so an exception can never escape.
+
+    paho re-raises callback exceptions (``suppress_exceptions`` is False by
+    default), which ends the network thread: no more messages, no keepalive,
+    no reconnect, while the main loop keeps publishing stale data.  One bad
+    payload from any device must not take the hub down.
+    """
+
+    @wraps(callback)
+    def wrapper(client, userdata, msg):
+        try:
+            callback(client, userdata, msg)
+        except Exception:
+            logger.exception("Unhandled error in handler for %s (topic %s)", topic, msg.topic)
+
+    return wrapper
+
+
 def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, object]:
-    """Return {topic: callback} mapping for local MQTT subscriptions."""
+    """Return {topic: callback} mapping for local MQTT subscriptions.
+
+    Every callback is wrapped by :func:`_guarded`.
+    """
 
     def on_pv(_client, _userdata, msg):
         reading = parse_tasmota_sml(msg.payload, source="pv")
@@ -101,7 +124,7 @@ def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, 
     for topic in gas.topics:
         routes[topic] = gas.on_message
 
-    return routes
+    return {topic: _guarded(topic, cb) for topic, cb in routes.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +149,10 @@ def _run(cfg: AppConfig) -> None:
     )
     if cfg.mqtt.username:
         client.username_pw_set(cfg.mqtt.username, cfg.mqtt.password)
+    # Belt and braces next to _guarded: paho must log, never re-raise, so the
+    # network thread survives any callback error (its own or a route's).
+    client.suppress_exceptions = True
+    client.enable_logger(logging.getLogger("energy_hub.paho"))
 
     pub = Publisher(client, cfg.output)
 

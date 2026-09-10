@@ -59,3 +59,47 @@ def test_pv_route_parses_tasmota():
     routes["tele/+/SENSOR"](None, None, FakeMessage("tele/tasmota_pv/SENSOR", payload))
     (name, (reading,)), = eng.calls
     assert name == "update_pv" and reading.power == 1234.5 and reading.source == "pv"
+
+
+# --- robustness: a handler error must never escape into paho's network thread
+
+
+class ExplodingEngine:
+    def __getattr__(self, name):
+        if name.startswith("update_"):
+            def boom(*_):
+                raise RuntimeError("engine broke")
+            return boom
+        raise AttributeError(name)
+
+
+def test_handler_exception_is_swallowed_and_logged(caplog):
+    cfg = AppConfig()
+    cfg.sources.charger.topic = "go-eCharger/1/nrg"
+    routes = _build_router(cfg, ExplodingEngine(), NoGas())
+    nrg = json.dumps([0] * 11 + [3700] + [0] * 4).encode()
+    with caplog.at_level("ERROR"):
+        routes["go-eCharger/1/nrg"](None, None, FakeMessage("go-eCharger/1/nrg", nrg))
+    assert "engine broke" in caplog.text
+
+
+def test_gas_route_is_guarded_too():
+    class BrokenGas:
+        topics = ["zigbee2mqtt/x"]
+
+        def on_message(self, *_):
+            raise ValueError("gas broke")
+
+    cfg = AppConfig()
+    routes = _build_router(cfg, RecordingEngine(), BrokenGas())
+    routes["zigbee2mqtt/x"](None, None, FakeMessage("zigbee2mqtt/x", b"{}"))  # must not raise
+
+
+def test_scalar_anker_payload_does_not_raise():
+    cfg = AppConfig()
+    cfg.sources.anker.topic = "anker/x"
+    eng = RecordingEngine()
+    routes = _build_router(cfg, eng, NoGas())
+    for payload in (b"42", b"null", b"true", b'"str"', b"[1,2]"):
+        routes["anker/x"](None, None, FakeMessage("anker/x", payload))
+    assert eng.calls == []
