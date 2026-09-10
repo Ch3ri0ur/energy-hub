@@ -77,6 +77,11 @@ def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, 
             engine.update_solarbank(sb)
 
     def on_charger(_client, _userdata, msg):
+        if msg.retain:
+            # A retained nrg value from hours ago would be treated as live for
+            # charger.stale_timeout and subtracted from the house load.
+            logger.debug("Ignoring retained charger message")
+            return
         power = parse_charger_nrg(msg.payload)
         if power is not None:
             engine.update_charger(power)
@@ -137,22 +142,35 @@ def _run(cfg: AppConfig) -> None:
                 logger.info("Subscribed to %s", topic)
             gas.publish()  # refresh the retained gas topic on every (re)connect
         else:
-            logger.error("MQTT connect failed: %s", reason_code)
+            logger.error("MQTT connect refused: %s", reason_code)
+
+    def on_connect_fail(_client, _userdata):
+        logger.warning("MQTT connection to %s:%d failed, retrying", cfg.mqtt.broker, cfg.mqtt.port)
 
     def on_message(_client, _userdata, msg):
-        cb = routes.get(msg.topic)
-        if cb:
-            cb(_client, _userdata, msg)
+        logger.debug("Unrouted MQTT message on %s", msg.topic)
 
     def on_disconnect(_client, _userdata, _flags, reason_code, _properties):
         if reason_code != 0:
             logger.warning("MQTT disconnected (rc=%s), reconnecting...", reason_code)
 
     client.on_connect = on_connect
+    client.on_connect_fail = on_connect_fail
     client.on_message = on_message
     client.on_disconnect = on_disconnect
+    # message_callback_add matches with MQTT wildcard semantics, so source topics
+    # such as tele/+/SENSOR work; on_message only sees what nothing else matched.
+    for topic, cb in routes.items():
+        client.message_callback_add(topic, cb)
 
-    client.connect(cfg.mqtt.broker, cfg.mqtt.port, cfg.mqtt.keepalive)
+    # If the hub dies (crash, power loss) the broker publishes this retained
+    # payload so consumers do not keep reading a stale "ok" health message.
+    client.will_set(pub.health_topic, pub.offline_payload(), qos=0, retain=True)
+
+    # connect_async + loop_start: paho retries in the background, so a broker
+    # that is down at boot does not crash the hub.
+    client.reconnect_delay_set(min_delay=1, max_delay=60)
+    client.connect_async(cfg.mqtt.broker, cfg.mqtt.port, cfg.mqtt.keepalive)
     client.loop_start()
 
     # --- Anker plugin (optional; library imported lazily) ---
@@ -209,6 +227,7 @@ def _run(cfg: AppConfig) -> None:
         logger.info("Shutting down...")
         if anker:
             anker.stop()
+        pub.publish_offline()  # clean shutdown: same payload the Last Will would send
         client.loop_stop()
         client.disconnect()
         logger.info("energy-hub stopped")

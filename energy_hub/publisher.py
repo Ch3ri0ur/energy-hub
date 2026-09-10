@@ -23,6 +23,31 @@ class Publisher:
         self._prefix = cfg.prefix.rstrip("/")
         self._last_publish = 0.0
 
+    @property
+    def health_topic(self) -> str:
+        return f"{self._prefix}/health"
+
+    @staticmethod
+    def offline_payload(timestamp: float | None = None) -> str:
+        """Retained health payload used as MQTT Last Will and on clean shutdown."""
+        return json.dumps({
+            "status": "offline",
+            "connected": False,
+            "anker_plugin_alive": False,
+            "issues": ["hub_offline"],
+            "sources": {},
+            "timestamp": timestamp,
+        }, separators=(",", ":"))
+
+    def publish_offline(self) -> None:
+        try:
+            info = self._client.publish(self.health_topic, self.offline_payload(time.time()), qos=0, retain=True)
+            info.wait_for_publish(timeout=1.0)
+        except (RuntimeError, ValueError) as exc:   # not connected: the Last Will covers it
+            logger.debug("Offline health not published (%s)", exc)
+        except Exception:
+            logger.exception("Failed to publish offline health")
+
     def should_publish(self) -> bool:
         return (time.time() - self._last_publish) >= self._cfg.publish_interval
 
@@ -52,7 +77,7 @@ class Publisher:
         )
 
     def publish_health(self, health: dict[str, Any]) -> None:
-        self._pub(f"{self._prefix}/health", health, retain=self._cfg.retain)
+        self._pub(self.health_topic, health, retain=self._cfg.retain)
 
     def publish_alert(self, alert: dict[str, Any]) -> None:
         self._pub(f"{self._prefix}/alerts", alert, retain=False)
