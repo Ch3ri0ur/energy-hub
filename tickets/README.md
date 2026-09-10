@@ -2,8 +2,8 @@
 
 Full-repo review, 2026-09-10. Validator overhaul, timestamp helper dedupe and the
 alignment-skew guard were done directly the same day (see "Done" below). Each ticket is self-contained: problem, file:line
-references, concrete fix, acceptance criteria, tests to add. Work them top to bottom;
-T01 first because every other ticket's "Tests" section depends on it.
+references, concrete fix, acceptance criteria, tests to add. Everything except the two rows below was implemented the same day (commits
+b6a9a32..57f5e16).
 
 | # | Title | Prio | Effort | Type |
 |---|-------|------|--------|------|
