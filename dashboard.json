@@ -1,4 +1,14 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_INFLUXDB",
+      "label": "InfluxDB (energy)",
+      "description": "InfluxDB datasource that Telegraf writes the energy-hub measurements to",
+      "type": "datasource",
+      "pluginId": "influxdb",
+      "pluginName": "InfluxDB"
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -36,7 +46,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -95,7 +105,7 @@
           "alias": "Consumption",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -139,7 +149,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -189,7 +199,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -233,7 +243,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -283,7 +293,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -327,7 +337,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -377,7 +387,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -421,7 +431,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -471,7 +481,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -515,7 +525,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -575,7 +585,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -632,7 +642,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Instant snapshot. Sources first, then sinks. See the panels to the right for the same flows plotted over time.",
       "fieldConfig": {
@@ -814,7 +824,7 @@
           "alias": "From Roof Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -842,7 +852,7 @@
           "alias": "From Balcony Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -870,7 +880,7 @@
           "alias": "From Battery",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -898,7 +908,7 @@
           "alias": "From Grid",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -926,7 +936,7 @@
           "alias": "To House",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -954,7 +964,7 @@
           "alias": "To Charger",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -982,7 +992,7 @@
           "alias": "To Battery",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1010,7 +1020,7 @@
           "alias": "To Grid",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1041,7 +1051,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Mirror view of power flow. Sources (solar, battery discharge, grid import) stack above zero; sinks (house, charger, battery charging, grid export) stack below zero. Each side should be roughly symmetrical when the site is in balance.",
       "fieldConfig": {
@@ -1295,7 +1305,7 @@
           "alias": "Roof Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1319,7 +1329,7 @@
           "alias": "Balcony Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1343,7 +1353,7 @@
           "alias": "Battery Discharge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1367,7 +1377,7 @@
           "alias": "Grid Import",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1391,7 +1401,7 @@
           "alias": "House",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1415,7 +1425,7 @@
           "alias": "Charger",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1439,7 +1449,7 @@
           "alias": "Battery Charge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1463,7 +1473,7 @@
           "alias": "Grid Export",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1490,7 +1500,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Stacked inputs over time: roof PV, balcony PV, battery discharge and grid import. The total area equals total instantaneous demand.",
       "fieldConfig": {
@@ -1636,7 +1646,7 @@
           "alias": "Roof Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1660,7 +1670,7 @@
           "alias": "Balcony Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1684,7 +1694,7 @@
           "alias": "Battery Discharge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1708,7 +1718,7 @@
           "alias": "Grid Import",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1735,7 +1745,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Stacked outputs over time: house load, EV charger, battery charging and grid export.",
       "fieldConfig": {
@@ -1881,7 +1891,7 @@
           "alias": "House",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1905,7 +1915,7 @@
           "alias": "Charger",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1929,7 +1939,7 @@
           "alias": "Battery Charge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1953,7 +1963,7 @@
           "alias": "Grid Export",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -1980,7 +1990,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "6-hour moving average of power flows (5 min buckets, 72-point window). Smooths out short spikes to show sustained trends. Sources above zero, sinks below.",
       "fieldConfig": {
@@ -2234,7 +2244,7 @@
           "alias": "Roof Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2275,7 +2285,7 @@
           "alias": "Balcony Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2322,7 +2332,7 @@
           "alias": "Battery Discharge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2369,7 +2379,7 @@
           "alias": "Grid Import",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2416,7 +2426,7 @@
           "alias": "House",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2463,7 +2473,7 @@
           "alias": "Charger",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2510,7 +2520,7 @@
           "alias": "Battery Charge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2557,7 +2567,7 @@
           "alias": "Grid Export",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -2607,7 +2617,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Everything above zero. Solar generation (roof + balcony) stacked as a filled area; consumption (house + charger + battery charging) stacked as line bands on top. Wherever the solar fill exceeds the consumption lines, the surplus went to the battery or back to the grid.",
       "fieldConfig": {
@@ -2867,7 +2877,7 @@
           "alias": "Roof Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -2891,7 +2901,7 @@
           "alias": "Balcony Solar",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -2915,7 +2925,7 @@
           "alias": "House",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -2939,7 +2949,7 @@
           "alias": "Charger",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -2963,7 +2973,7 @@
           "alias": "Battery Charge",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3003,7 +3013,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3122,7 +3132,7 @@
           "alias": "Import",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3146,7 +3156,7 @@
           "alias": "Export",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3173,7 +3183,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Raw PV generation split by source before any Solarbank buffering or battery discharge contribution.",
       "fieldConfig": {
@@ -3290,7 +3300,7 @@
           "alias": "Roof",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3314,7 +3324,7 @@
           "alias": "Balcony PV",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3354,7 +3364,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3520,7 +3530,7 @@
           "alias": "Charging",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3544,7 +3554,7 @@
           "alias": "Discharging",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3568,7 +3578,7 @@
           "alias": "SoC",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3595,7 +3605,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3712,7 +3722,7 @@
           "alias": "Self-Consumption",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3736,7 +3746,7 @@
           "alias": "Self-Sufficiency",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3776,7 +3786,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3932,7 +3942,7 @@
           "alias": "Grid Import",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3956,7 +3966,7 @@
           "alias": "Grid Export",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -3980,7 +3990,7 @@
           "alias": "Roof PV",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "energy",
@@ -4020,7 +4030,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Cumulative gas consumption reported by the BK4 meter impulse counter (0.01 m³/impulse).",
       "fieldConfig": {
@@ -4109,7 +4119,7 @@
           "alias": "Volume",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [],
           "measurement": "gas",
@@ -4136,7 +4146,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Battery level of the Zigbee impulse counter sensor attached to the BK4 gas meter.",
       "fieldConfig": {
@@ -4198,7 +4208,7 @@
           "alias": "Battery",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -4255,7 +4265,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Daily gas consumption derived from the cumulative volume counter. Each bar is the difference between the last reading of consecutive days.",
       "fieldConfig": {
@@ -4344,7 +4354,7 @@
           "alias": "Daily Usage",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -4393,7 +4403,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Monthly gas consumption (approximate — uses 30-day buckets). Each bar is the difference between the last reading at the end of consecutive 30-day windows.",
       "fieldConfig": {
@@ -4482,7 +4492,7 @@
           "alias": "Monthly Usage",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -4531,7 +4541,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Total gas used in the last 30 days.",
       "fieldConfig": {
@@ -4585,7 +4595,7 @@
           "alias": "This Month (m³)",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -4634,7 +4644,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Total gas used in the last 365 days.",
       "fieldConfig": {
@@ -4688,7 +4698,7 @@
           "alias": "This Year (m³)",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -4737,7 +4747,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "dduzy1dg7auiob"
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "Yearly gas consumption (approximate — uses 365-day buckets).",
       "fieldConfig": {
@@ -4824,7 +4834,7 @@
           "alias": "Yearly Usage",
           "datasource": {
             "type": "influxdb",
-            "uid": "dduzy1dg7auiob"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -4882,13 +4892,12 @@
     "list": []
   },
   "time": {
-    "from": "2026-05-16T09:04:13.601Z",
-    "to": "2026-05-16T10:55:37.560Z"
+    "from": "now-24h",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Energy Hub",
   "uid": "fdv166b1z6ghsf",
-  "version": 31,
   "weekStart": ""
 }

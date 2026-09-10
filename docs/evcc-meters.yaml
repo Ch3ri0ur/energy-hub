@@ -1,6 +1,6 @@
 # evcc meter config — updated to use energy-hub MQTT topics
 #
-# Replace the existing `meters:` section in your evcc config (asa) with this.
+# Replace the existing `meters:` section in your evcc config with this.
 # The energy-hub publishes pre-aggregated, validated data to `energy/` topics
 # so evcc no longer parses raw Tasmota or Anker payloads directly.
 #
@@ -9,7 +9,7 @@
 # Battery: energy/battery → {"soc": ..., "power": ..., "state": ..., "stale": ..., "dead": ...}
 #
 # Staleness: "stale" means older than the source's stale_timeout but still the
-# last known value.  "dead" means no data beyond the grace period; the hub then
+# last known value.  "dead" means no data for stale_policy.zero_after; the hub then
 # publishes null for power/soc on these topics (the aggregated blob keeps 0 for
 # Telegraf).  jq yields null, evcc reports the meter as faulty and stops relying
 # on it — safer than a fabricated 0 W / 0 %.  Verify once in the evcc log that a
