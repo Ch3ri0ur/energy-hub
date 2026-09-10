@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import pytest
 import yaml
@@ -54,8 +55,9 @@ def test_missing_file_gives_defaults(tmp_path):
 
 
 def test_repo_config_loads_clean(caplog):
+    repo_config = Path(__file__).resolve().parents[1] / "config.yaml"
     with caplog.at_level(logging.WARNING):
-        cfg = load_config("config.yaml", env_file=None)
+        cfg = load_config(repo_config, env_file=None)
     assert "unknown" not in caplog.text
     assert cfg.sources.tasmota_grid.failback_after == 60
 

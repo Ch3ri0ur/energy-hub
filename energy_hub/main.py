@@ -102,10 +102,8 @@ def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, 
 
     def on_anker(_client, _userdata, msg):
         grid, sb = parse_anker_snapshot(msg.payload)
-        if grid:
-            engine.update_grid_anker(grid)
-        if sb:
-            engine.update_solarbank(sb)
+        if grid or sb:
+            engine.update_anker(grid, sb)   # one locked update for both halves
 
     def on_charger(_client, _userdata, msg):
         if msg.retain:

@@ -266,3 +266,85 @@ def test_freshness_flags_follow_latest_reading_not_aligned_sample():
     s = e.snapshot()
     assert s["pv_balcony"]["output_power"] == 105.0       # aligned sample (now-20)
     assert s["battery"]["stale"] is False and s["battery"]["dead"] is False
+
+
+# --- coverage: aggregation figures, battery, charger, statuses ---------------
+
+def test_pv_total_generation_and_self_consumption_figures():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(-400.0, now))               # exporting 400 W
+    e.update_pv(pv(1000.0, now))
+    e.update_solarbank(SolarbankReading(
+        photovoltaic_power=800.0, output_power=500.0, battery_power_signed=300.0, battery_soc=55.0,
+        battery_energy_wh=1478.0, received_at=now,
+    ))
+    s = e.snapshot()
+    assert s["pv_total"]["power"] == 1500.0 and s["pv_total"]["generation"] == 1800.0
+    assert s["grid"]["export_w"] == 400.0 and s["grid"]["import_w"] == 0.0
+    assert s["consumption"] == 1100.0
+    assert s["self_consumption_pct"] == round(1100 / 1500 * 100, 1)
+    assert s["self_sufficiency_pct"] == 100.0
+    b = s["battery"]
+    assert b["state"] == "charging" and b["charge_w"] == 300.0 and b["discharge_w"] == 0.0
+    assert b["soc"] == 55.0 and b["energy_wh"] == 1478.0
+
+
+def test_dead_solarbank_zeroes_battery_and_balcony():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))
+    e.update_solarbank(SolarbankReading(output_power=500.0, battery_soc=55.0, battery_power_signed=-200.0,
+                                        received_at=now - 400))
+    s = e.snapshot()
+    assert s["battery"] == {"soc": 0.0, "power": 0.0, "charge_w": 0.0, "discharge_w": 0.0, "energy_wh": 0.0,
+                            "state": "unknown", "stale": True, "dead": True}
+    assert s["pv_balcony"]["output_power"] == 0.0 and s["pv_balcony"]["dead"] is True
+    assert s["pv_total"]["dead"] is True                       # roof never reported, balcony dead
+    assert s["consumption"] == 500.0
+
+
+def test_charger_aligned_sample_differs_from_raw_power():
+    e = Engine(AppConfig())
+    now = time.time()
+    e._charger_history.append((now - 15, 3000.0))
+    e._charger_history.append((now - 1, 0.0))
+    e.charger_power, e.charger_received_at = 0.0, now - 1
+    e.update_grid_tasmota(grid(3300.0, now - 10))              # grid sample taken while the car charged
+    s = e.snapshot()
+    assert s["charger"]["power"] == 3000.0 and s["charger"]["raw_power"] == 0.0
+    assert s["house"]["power"] == 300.0
+
+
+def test_charger_stale_is_zero_and_dead():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.charger_power, e.charger_received_at = 2000.0, now - 400
+    e._charger_history.append((now - 400, 2000.0))
+    e.update_grid_tasmota(grid(500.0, now))
+    c = e.snapshot()["charger"]
+    assert c == {"power": 0.0, "raw_power": 0.0, "stale": True, "dead": True}
+
+
+def test_source_statuses_shape():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now - 130))              # stale
+    e.update_pv(pv(1000.0, now))
+    e.update_grid_anker(anker(250.0, now - 400))               # dead
+    st = e.source_statuses()
+    assert st["pv_roof"]["status"] == "ok" and st["pv_roof"]["validation"]["accepted"] == 1
+    assert st["grid_tasmota"]["status"] == "stale" and 129 < st["grid_tasmota"]["age"] < 132
+    assert st["grid_anker"]["status"] == "dead"
+    assert st["solarbank"] == {"status": "no_data", "age": None}
+    assert st["charger"]["status"] == "no_data"
+    e.snapshot()
+    assert e.source_statuses()["active_grid_source"] == "tasmota"
+
+
+def test_update_anker_applies_both_halves():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_anker(anker(250.0, now), SolarbankReading(output_power=100.0, received_at=now))
+    e.update_anker(None, SolarbankReading(output_power=120.0, received_at=now))
+    assert e.grid_anker.net_grid_power == 250.0 and e.solarbank.output_power == 120.0

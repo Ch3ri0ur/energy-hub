@@ -113,6 +113,14 @@ class Engine:
         self._solarbank_history.append(reading)
 
     @_locked
+    def update_anker(self, grid: AnkerGridReading | None, solarbank: SolarbankReading | None) -> None:
+        """Apply both halves of one Anker snapshot atomically."""
+        if grid is not None:
+            self.update_grid_anker(grid)
+        if solarbank is not None:
+            self.update_solarbank(solarbank)
+
+    @_locked
     def update_charger(self, power: float) -> None:
         now = time.time()
         self.charger_power = power
@@ -144,7 +152,8 @@ class Engine:
                             f" ({why})" if why else "")
             self._active_grid_source = source
 
-    def active_grid(self) -> tuple[SensorReading | None, str]:
+    @_locked
+    def _active_grid(self) -> tuple[SensorReading | None, str]:
         """Return (effective_grid_reading_as_SensorReading, source_name).
 
         Priority: Tasmota (fresh) → Anker (fresh) → whichever stale reading is newer.
@@ -279,7 +288,7 @@ class Engine:
     @_locked
     def snapshot(self) -> dict[str, Any]:
         """Build the full aggregated snapshot for publishing."""
-        grid_reading, grid_source = self.active_grid()
+        grid_reading, grid_source = self._active_grid()
 
         grid_stale_timeout = (
             self._cfg.sources.anker.stale_timeout
