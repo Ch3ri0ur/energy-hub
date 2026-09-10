@@ -34,8 +34,18 @@ def test_no_grid_issue_when_grid_never_configured():
     assert mon().build_health(statuses(tasmota="no_data", anker="no_data"), True, True)["issues"] == []
 
 
-def test_anker_down_issue():
-    assert "anker_plugin_down" in mon().build_health(statuses(), False, True)["issues"]
+def test_anker_down_issue_with_details():
+    h = mon().build_health(statuses(), {"alive": False, "last_error": "AuthError: bad password"}, True)
+    assert "anker_plugin_down" in h["issues"] and h["anker_plugin"]["last_error"].startswith("AuthError")
+    assert mon().build_health(statuses(), None, True)["issues"] == []          # plugin disabled
+    assert mon().build_health(statuses(), {"alive": True}, True)["issues"] == []
+
+
+def test_anker_alert_message_includes_last_error():
+    m = mon()
+    out = []
+    m.process({"issues": ["anker_plugin_down"], "anker_plugin": {"last_error": "AuthError"}}, out.append)
+    assert "AuthError" in out[0]["message"]
 
 
 def test_info_issues_skip_webhook_and_alert_payload_has_severity(monkeypatch):

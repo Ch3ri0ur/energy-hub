@@ -8,10 +8,7 @@ T01 first because every other ticket's "Tests" section depends on it.
 | # | Title | Prio | Effort | Type |
 |---|-------|------|--------|------|
 | [T01](T01-test-and-lint-scaffolding.md) | Extend the test suite (scaffolding exists) | P1 | M | foundation |
-| [T12](T12-anker-alive-semantics.md) | `anker_plugin_alive` true before connected; expose errors | P2 | S | bug |
-| [T13](T13-anker-partial-snapshot.md) | Anker bridge withholds meter data if solarbank absent | P2 | XS | bug |
 | [T14](T14-anker-optional-import-and-dependency-pin.md) | Pin anker-solix-api to a git rev (import compat already done) | P3 | XS | packaging |
-| [T15](T15-anker-plugin-guards.md) | Anker plugin: shutdown traceback, ms timestamps, callback guard | P3 | S | robustness |
 | [T16](T16-evcc-dead-source-contract.md) | Dead sources published as `0` to evcc → publish `null` (decided) | P2 | M | design |
 | [T17](T17-config-validation-and-cleanup.md) | Config: unknown keys, unused key, stale-policy semantics | P3 | S | quality |
 | [T18](T18-telegraf-doc-consistency.md) | Telegraf drop-in contradicts header; QoS 0 + persistent | P3 | XS | docs |
@@ -29,6 +26,7 @@ Done directly (2026-09-10), no ticket needed:
 - Gas tracker: documented sync key, no phantom impulse on start/retained messages, atomic state file, retained sync cleared, publish on connect and on battery change (T02–T05).
 - Grid failover: energy counters stay on the Tasmota meter (`energy_source`/`energy_stale` fields), stale readings used symmetrically, fail-back hysteresis via `sources.tasmota_grid.failback_after`, alert backoff survives recovery, `grid_tasmota_stale` info issue while Anker covers, per-issue recovery messages (T08, T25, T26).
 - MQTT: connect_async with automatic reconnect (broker down at boot no longer crashes the hub), wildcard-capable routing via message_callback_add, Last Will + clean-shutdown offline health payload, retained charger messages ignored (T10, T11, T24).
+- Anker plugin: alive only while the MQTT session is connected, status (last_error, retries, last_snapshot_at) in health and in the alert text, partial snapshots when only meter or only solarbank reports, guarded message callback, ms timestamp guard, no shutdown traceback (T12, T13, T15).
 
 Dependencies: T01 → all. T14 removes the import stub introduced in T01. T16 and T17
 change the snapshot/stale semantics, so do them before T22 (README). 

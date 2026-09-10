@@ -26,6 +26,15 @@ ISSUES: dict[str, tuple[str, str]] = {
 }
 
 
+def _describe(issue: str, context: dict[str, Any]) -> str:
+    severity, msg = ISSUES.get(issue, ("warning", issue))
+    if issue == "anker_plugin_down":
+        err = (context.get("anker_plugin") or {}).get("last_error")
+        if err:
+            msg = f"{msg}: {err}"
+    return msg
+
+
 class AlertManager:
     """Throttles alerts with exponential backoff and delivers via MQTT + webhook."""
 
@@ -60,7 +69,8 @@ class AlertManager:
         for issue in current:
             if not self._should_send(issue, now):
                 continue
-            severity, msg = ISSUES.get(issue, ("warning", issue))
+            severity = ISSUES.get(issue, ("warning", issue))[0]
+            msg = _describe(issue, context)
             stage = self._advance(issue, now)
             payload = {
                 "issue": issue,
@@ -153,11 +163,16 @@ class HealthMonitor:
     def build_health(
         self,
         source_statuses: dict[str, Any],
-        anker_alive: bool,
+        anker_status: dict[str, Any] | bool | None,
         connected: bool,
     ) -> dict[str, Any]:
+        """``anker_status`` is ``AnkerPlugin.status()``, ``None`` when the plugin is
+        disabled (a bool is accepted for backwards compatibility)."""
         now = time.time()
         issues: list[str] = []
+        if isinstance(anker_status, bool):
+            anker_status = {"alive": anker_status}
+        anker_alive = anker_status is None or bool(anker_status.get("alive"))
 
         pv = source_statuses.get("pv_roof", {})
         grid = source_statuses.get("grid_tasmota", {})
@@ -183,6 +198,7 @@ class HealthMonitor:
             "uptime": round(now - self._start_time, 1),
             "sources": source_statuses,
             "anker_plugin_alive": anker_alive,
+            "anker_plugin": anker_status,
             "issues": issues,
             "timestamp": now,
         }

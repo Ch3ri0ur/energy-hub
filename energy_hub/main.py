@@ -215,7 +215,7 @@ def _run(cfg: AppConfig) -> None:
                 statuses = engine.source_statuses()
                 health = health_mon.build_health(
                     source_statuses=statuses,
-                    anker_alive=anker.is_alive() if anker else True,
+                    anker_status=anker.status() if anker else None,
                     connected=client.is_connected(),
                 )
                 pub.publish_health(health)

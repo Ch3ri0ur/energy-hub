@@ -16,6 +16,7 @@ import contextlib
 import json
 import logging
 import threading
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -83,7 +84,13 @@ def _iso_now() -> str:
 
 
 def _iso_ts(value: int | float) -> str:
-    return datetime.fromtimestamp(value, UTC).isoformat().replace("+00:00", "Z")
+    """Epoch (seconds; milliseconds are detected and converted) → ISO string."""
+    try:
+        if value > 1e11:  # milliseconds
+            value = value / 1000
+        return datetime.fromtimestamp(value, UTC).isoformat().replace("+00:00", "Z")
+    except (ValueError, OverflowError, OSError, TypeError):
+        return str(value)
 
 
 def _normalize_int(value: Any) -> int | None:
@@ -206,7 +213,10 @@ class _SnapshotBuilder:
     def _build(self) -> dict[str, Any] | None:
         meter = self._values.get("meter") or {}
         sb = self._values.get("solarbank") or {}
-        if not meter or not sb:
+        # Partial snapshots are intentional: if the solarbank is off (winter) the
+        # smart-meter data must still reach the hub for grid failover, and vice
+        # versa.  _prune_empty drops the keys of the missing half.
+        if not meter and not sb:
             return None
         g2h = meter.get("grid_to_home_power")
         p2g = meter.get("pv_to_grid_power")
@@ -281,8 +291,13 @@ async def _run_bridge(
     local_publish,
     stop_event: asyncio.Event,
     api_cls: type,
+    on_connected=lambda alive: None,
 ) -> None:
-    """One attempt at Anker auth + MQTT session + poller loop."""
+    """One attempt at Anker auth + MQTT session + poller loop.
+
+    ``on_connected(True)`` is called once the Anker MQTT session is up and
+    ``on_connected(False)`` when this attempt ends for any reason.
+    """
     async with ClientSession() as ws:
         api = api_cls(cfg.user, cfg.password, cfg.country, ws, logger)
         if await api.async_authenticate():
@@ -304,13 +319,19 @@ async def _run_bridge(
         builder = _SnapshotBuilder(meter, solarbank)
 
         def _on_msg(_session, _topic, message, _data, _model, device_sn, values):
-            snap = builder.update(device_sn, message, values)
-            if snap:
-                local_publish(snap)
+            # Never let one bad message kill the library's poller task (that
+            # would restart the whole bridge with backoff).
+            try:
+                snap = builder.update(device_sn, message, values)
+                if snap:
+                    local_publish(snap)
+            except Exception:
+                logger.exception("Anker message handling failed (device %s)", device_sn)
 
         mqtt_session = await api.startMqttSession()
         if not (mqtt_session and mqtt_session.is_connected()):
             raise ConnectionError("Anker MQTT session failed to connect")
+        on_connected(True)
 
         topics: set[str] = set()
         for dev in (meter, solarbank):
@@ -343,6 +364,7 @@ async def _run_bridge(
             for t in done:
                 t.result()  # re-raises exceptions
         finally:
+            on_connected(False)
             for t in (stop_task, refresh, poller):
                 if not t.done():
                     t.cancel()
@@ -376,6 +398,7 @@ class AnkerPlugin:
         self._alive = False
         self._last_error: str = ""
         self._retry_count = 0
+        self._last_snapshot_at: float | None = None
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -399,7 +422,21 @@ class AnkerPlugin:
         logger.info("Anker plugin stopped")
 
     def is_alive(self) -> bool:
+        """True only while the Anker MQTT session is connected."""
         return self._alive
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "alive": self._alive,
+            "last_error": self._last_error,
+            "retries": self._retry_count,
+            "last_snapshot_at": self._last_snapshot_at,
+        }
+
+    def _set_alive(self, alive: bool) -> None:
+        if alive and not self._alive:
+            logger.info("Anker MQTT session connected")
+        self._alive = alive
 
     @property
     def last_error(self) -> str:
@@ -416,6 +453,7 @@ class AnkerPlugin:
         try:
             payload = json.dumps(snapshot, separators=(",", ":"))
             self._mqtt.publish(self._topic, payload=payload, qos=0, retain=True)
+            self._last_snapshot_at = time.time()
         except Exception:
             logger.exception("Failed to publish Anker snapshot to local MQTT")
 
@@ -438,7 +476,9 @@ class AnkerPlugin:
         # Bridge _stop (threading.Event) → stop_async (asyncio.Event)
         def _watch_stop():
             self._stop.wait()
-            loop.call_soon_threadsafe(stop_async.set)
+            if not loop.is_closed():
+                with contextlib.suppress(RuntimeError):  # loop may close concurrently
+                    loop.call_soon_threadsafe(stop_async.set)
 
         watcher = threading.Thread(target=_watch_stop, daemon=True)
         watcher.start()
@@ -446,10 +486,9 @@ class AnkerPlugin:
         try:
             while not self._stop.is_set():
                 try:
-                    self._alive = True
                     self._last_error = ""
                     loop.run_until_complete(
-                        _run_bridge(self._cfg, self._publish_snapshot, stop_async, api_cls)
+                        _run_bridge(self._cfg, self._publish_snapshot, stop_async, api_cls, self._set_alive)
                     )
                     if self._stop.is_set():
                         break
