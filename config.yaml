@@ -20,6 +20,7 @@ anker:
   trigger_timeout: 60   # seconds the realtime trigger stays active
   meter_trigger_interval: 60    # seconds between A17X7 trigger renewals
   solarbank_status_interval: 5  # seconds between A17C5 status requests
+  data_timeout: 600     # restart the bridge when no device message arrived for this long (0 = off)
 
 # Input topics (raw sensor data)
 sources:

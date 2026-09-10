@@ -180,6 +180,8 @@ class _SnapshotBuilder:
         self._values: dict[str, dict[str, Any]] = {"meter": {}, "solarbank": {}}
         self._last: dict[str, Any] | None = None
         self._lock = threading.Lock()
+        # Monotonic time of the last message from either device (data-flow watchdog).
+        self.last_message_at: float = time.monotonic()
 
     def update(
         self,
@@ -189,7 +191,10 @@ class _SnapshotBuilder:
     ) -> dict[str, Any] | None:
         """Incorporate new values.  Returns a snapshot dict if it changed, else None."""
         role = self._roles.get(device_sn)
-        if not role or not extracted_values:
+        if not role:
+            return None
+        self.last_message_at = time.monotonic()
+        if not extracted_values:
             return None
 
         fields = METER_FIELDS if role == "meter" else SOLARBANK_FIELDS
@@ -255,20 +260,50 @@ class _SnapshotBuilder:
 # ---------------------------------------------------------------------------
 
 
+DISCONNECT_GRACE = 30.0   # s the Anker session may be down before the bridge restarts
+
+
 async def _refresh_live_updates(
     mqtt_session: Any,
     meter: dict[str, Any],
     solarbank: dict[str, Any],
     cfg: AnkerConfig,
+    builder: _SnapshotBuilder | None = None,
+    *,
+    interval: float = 1.0,
+    initial_delay: float = 2.0,
+    disconnect_grace: float = DISCONNECT_GRACE,
 ) -> None:
-    """Periodically renew realtime triggers / status requests."""
-    await asyncio.sleep(2)
+    """Periodically renew realtime triggers / status requests, and watch the session.
+
+    The library's message poller loops forever without ever re-checking the
+    connection, and its disconnect callback only logs.  So this task raises
+    ``ConnectionError`` when the session has been disconnected for longer than
+    ``disconnect_grace`` or when no device message arrived for
+    ``cfg.data_timeout`` seconds; the outer retry loop then re-authenticates
+    and rebuilds the session instead of reporting "alive" forever.
+    """
+    await asyncio.sleep(initial_delay)
     next_meter = 0.0
     next_sb = 0.0
     loop = asyncio.get_running_loop()
     sb_supports_status = bool(solarbank.get("mqtt_status_request"))
+    started = time.monotonic()
+    disconnected_since: float | None = None
 
     while True:
+        mono = time.monotonic()
+        if mqtt_session.is_connected():
+            disconnected_since = None
+        else:
+            disconnected_since = disconnected_since or mono
+            if mono - disconnected_since > disconnect_grace:
+                raise ConnectionError(f"Anker MQTT session disconnected for {mono - disconnected_since:.0f}s")
+        if cfg.data_timeout and builder is not None:
+            silent_for = mono - max(builder.last_message_at, started)
+            if silent_for > cfg.data_timeout:
+                raise ConnectionError(f"no Anker device message for {silent_for:.0f}s")
+
         now = loop.time()
         if cfg.meter_trigger_interval and now >= next_meter:
             mqtt_session.realtime_trigger(
@@ -283,7 +318,7 @@ async def _refresh_live_updates(
                     deviceDict=solarbank, timeout=cfg.trigger_timeout,
                 )
             next_sb = now + cfg.solarbank_status_interval
-        await asyncio.sleep(1)
+        await asyncio.sleep(interval)
 
 
 async def _run_bridge(
@@ -349,7 +384,7 @@ async def _run_bridge(
             )
         )
         refresh = asyncio.create_task(
-            _refresh_live_updates(mqtt_session, meter, solarbank, cfg)
+            _refresh_live_updates(mqtt_session, meter, solarbank, cfg, builder)
         )
         stop_task = asyncio.create_task(stop_event.wait())
 
@@ -399,6 +434,7 @@ class AnkerPlugin:
         self._last_error: str = ""
         self._retry_count = 0
         self._last_snapshot_at: float | None = None
+        self._backoff = self.BACKOFF_MIN
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -436,6 +472,7 @@ class AnkerPlugin:
     def _set_alive(self, alive: bool) -> None:
         if alive and not self._alive:
             logger.info("Anker MQTT session connected")
+            self._backoff = self.BACKOFF_MIN   # a working session earns a fresh backoff
         self._alive = alive
 
     @property
@@ -468,7 +505,6 @@ class AnkerPlugin:
             logger.error("Anker plugin disabled: %s", self._last_error)
             return
 
-        backoff = self.BACKOFF_MIN
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         stop_async = asyncio.Event()
@@ -494,7 +530,7 @@ class AnkerPlugin:
                         break
                     # Clean exit from bridge — shouldn't happen, treat as error
                     self._last_error = "Bridge exited unexpectedly"
-                    logger.warning("Anker bridge exited, retrying in %ds", backoff)
+                    logger.warning("Anker bridge exited, retrying in %ds", self._backoff)
                 except (
                     ClientError,
                     TimeoutError,
@@ -505,18 +541,18 @@ class AnkerPlugin:
                     RuntimeError,
                 ) as exc:
                     self._last_error = f"{type(exc).__name__}: {exc}"
-                    logger.error("Anker plugin error: %s, retrying in %ds", exc, backoff)
-                except Exception:
-                    self._last_error = "unexpected error"
-                    logger.exception("Anker plugin unexpected error, retrying in %ds", backoff)
+                    logger.error("Anker plugin error: %s, retrying in %ds", exc, self._backoff)
+                except Exception as exc:
+                    self._last_error = f"unexpected {type(exc).__name__}: {exc}"
+                    logger.exception("Anker plugin unexpected error, retrying in %ds", self._backoff)
 
                 self._alive = False
                 self._retry_count += 1
 
                 # Wait with backoff, but respect stop signal
-                if self._stop.wait(timeout=backoff):
+                if self._stop.wait(timeout=self._backoff):
                     break
-                backoff = min(backoff * 2, self.BACKOFF_MAX)
+                self._backoff = min(self._backoff * 2, self.BACKOFF_MAX)
         finally:
             self._alive = False
             loop.close()

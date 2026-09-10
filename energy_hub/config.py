@@ -52,6 +52,9 @@ class AnkerConfig:
     trigger_timeout: int = 60
     meter_trigger_interval: int = 60
     solarbank_status_interval: int = 5
+    # Restart the cloud bridge when no message from either device arrived for this
+    # long (0 = off).  The library never notices a lost session by itself.
+    data_timeout: int = 600
 
     @property
     def enabled(self) -> bool:
