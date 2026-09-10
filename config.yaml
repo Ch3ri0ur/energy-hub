@@ -62,10 +62,11 @@ validation:
   meter_noise_tolerance: 0.1   # kWh, allowed backwards jitter
   rate_safety_factor: 2.0      # energy may rise at most max_power * elapsed * factor
   power_jump_confirm: 3000.0   # W, power jumps larger than this need a confirming 2nd reading (0 = off)
+  power_jump_max_gap: 120      # s, skip the jump check when the previous reading is older (reader outage)
   max_consecutive_errors: 10   # last-resort: progression failures before forced re-baseline
   quality_check_window: 20     # rolling window of readings for the quality ratio
   quality_alert_threshold: 0.5 # alert when more than this fraction was rejected
-  clock_offset_warn: 60        # s, warn (and stop trusting device time) beyond this
+  clock_offset_warn: 60        # s, warn beyond this; device time is only used for alignment within max_alignment_skew
   max_alignment_skew: 30       # s, skip sample alignment if the reference is older
 
 # Gas impulse counter (Zigbee2MQTT BK4 meter via door/contact sensor)

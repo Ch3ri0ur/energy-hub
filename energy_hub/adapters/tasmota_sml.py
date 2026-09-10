@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from .base import SensorReading
@@ -25,13 +26,16 @@ def parse_tasmota_sml(payload: bytes | str, source: str = "") -> SensorReading |
             payload = payload.decode("utf-8")
         data: dict[str, Any] = json.loads(payload)
         sml = data["SML"]
-        return SensorReading(
+        reading = SensorReading(
             power=float(sml["Power_curr"]),
             energy_import=float(sml["Total_in"]),
             energy_export=float(sml["Total_out"]),
             timestamp=data.get("Time", ""),
             source=source,
         )
+        if not all(math.isfinite(x) for x in (reading.power, reading.energy_import, reading.energy_export)):
+            raise ValueError("non-finite value in SML payload")
+        return reading
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         logger.warning("Failed to parse Tasmota SML payload (%s): %s", source, exc)
         return None

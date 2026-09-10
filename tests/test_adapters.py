@@ -72,3 +72,11 @@ def test_anker_garbage():
 def test_anker_scalar_json_returns_nothing():
     for payload in (b"42", b"null", b"true", b"[1]"):
         assert parse_anker_snapshot(payload) == (None, None)
+
+
+def test_non_finite_values_are_rejected_by_all_parsers():
+    assert parse_tasmota_sml(b'{"Time":"x","SML":{"Total_in":NaN,"Total_out":0,"Power_curr":1}}', source="pv") is None
+    assert parse_tasmota_sml(b'{"Time":"x","SML":{"Total_in":1,"Total_out":0,"Power_curr":Infinity}}') is None
+    assert parse_charger_nrg(b"[0,0,0,0,0,0,0,0,0,0,0,NaN,0,0,0,0]") is None
+    g, sb = parse_anker_snapshot(b'{"net_grid_power":NaN,"grid_to_home_power":5,"battery_soc":Infinity}')
+    assert g.net_grid_power == 5.0 and sb.battery_soc == 0.0

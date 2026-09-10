@@ -48,6 +48,7 @@ decide whether to trust device time for sample alignment.
 from __future__ import annotations
 
 import logging
+import math
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -95,7 +96,7 @@ class SensorValidator:
     ) -> tuple[bool, str | None]:
         """Return ``(accepted, reason)``.  ``reason`` is ``None`` when accepted.
 
-        ``expected_jump`` is a power change (W, absolute) the caller can explain by
+        ``expected_jump`` is a signed power change (W) the caller can explain by
         other measurements; it is subtracted before the power-jump check.
         Held readings (awaiting confirmation) return ``(False, "held: ...")``; they
         count as neither accepted nor rejected for the quality ratio.
@@ -119,8 +120,14 @@ class SensorValidator:
         # -- soft checks: progression + power jump, with confirmation -------------
         reason = self._check_progression(reading, prev, source)
         if reason is None:
-            jump = abs(reading.power - prev.power) - abs(expected_jump)
-            if self._cfg.power_jump_confirm and jump > self._cfg.power_jump_confirm:
+            # Residual change the caller cannot explain (signed: a charger that stops
+            # explains a drop, not a rise of the same size).
+            jump = abs((reading.power - prev.power) - expected_jump)
+            elapsed = reading.received_at - prev.received_at
+            # After a long gap (reader outage) the previous power says nothing about
+            # the present; holding the first reading would only delay the fail-back.
+            gap = self._cfg.power_jump_max_gap
+            if self._cfg.power_jump_confirm and (not gap or elapsed <= gap) and jump > self._cfg.power_jump_confirm:
                 if st.candidate is not None and self._confirms(reading, st.candidate, source):
                     logger.info("%s: power jump to %.0f W confirmed", source, reading.power)
                     return self._accept(st, reading)
@@ -185,9 +192,13 @@ class SensorValidator:
         return st.clock_offset if st else None
 
     def device_time_trusted(self, source: str) -> bool:
-        """True when the device clock agrees with the host within ``clock_offset_warn``."""
+        """True when the device clock is close enough to the host clock to use it
+        for sample alignment: within ``clock_offset_warn`` *and* within
+        ``max_alignment_skew`` (an offset larger than the skew would disable
+        alignment on every snapshot anyway)."""
         off = self.clock_offset(source)
-        return off is not None and abs(off) <= self._cfg.clock_offset_warn
+        limit = min(self._cfg.clock_offset_warn, self._cfg.max_alignment_skew)
+        return off is not None and abs(off) <= limit
 
     def stats(self, source: str) -> dict[str, object]:
         st = self._stats.get(source)
@@ -205,6 +216,10 @@ class SensorValidator:
 
     def _check_bounds(self, r: SensorReading, source: str) -> str | None:
         cfg = self._cfg
+        if not all(math.isfinite(x) for x in (r.power, r.energy_import, r.energy_export)):
+            # json.loads happily produces NaN/Infinity; every comparison below is
+            # False for NaN, so it would sail through and end up in the output JSON.
+            return f"{source}: non-finite value ({r.power}/{r.energy_import}/{r.energy_export})"
         if r.energy_import < 0 or r.energy_export < 0:
             return f"{source}: negative energy counter ({r.energy_import}/{r.energy_export})"
         if r.energy_import > cfg.max_total_energy or r.energy_export > cfg.max_total_energy:

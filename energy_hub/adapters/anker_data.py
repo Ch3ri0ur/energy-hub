@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from typing import Any
 
@@ -17,9 +18,10 @@ def _float(val: Any, default: float = 0.0) -> float:
     if val is None:
         return default
     try:
-        return float(val)
+        out = float(val)
     except (TypeError, ValueError):
         return default
+    return out if math.isfinite(out) else default
 
 
 def _received_at(data: dict[str, Any], updated_key: str) -> float:

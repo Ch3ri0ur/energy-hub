@@ -231,3 +231,39 @@ def test_missing_timestamp_not_trusted(v):
     v.validate(grid(), "grid")
     assert not v.device_time_trusted("grid")
     assert v.clock_offset("grid") is None
+
+
+# --- non-finite values -------------------------------------------------------
+
+def test_nan_and_inf_are_rejected(v):
+    nan, inf = float("nan"), float("inf")
+    for r in (grid(power=nan), grid(imp=nan), grid(exp=inf), pv(power=inf)):
+        ok, msg = v.validate(r, r.source)
+        assert not ok and "non-finite" in msg
+    assert v.stats("grid")["rejected"] == 3 and v.stats("grid")["accepted"] == 0
+
+
+# --- explanation is signed, jump check skipped across long gaps -------------
+
+def test_charger_stop_does_not_excuse_a_grid_rise(v):
+    v.validate(grid(power=300.0), "grid")
+    ok, msg = v.validate(grid(power=11300.0, imp=42001.02, at=T0 + 10), "grid", expected_jump=-11000.0)
+    assert not ok and "power jump" in msg
+
+
+def test_no_jump_check_after_a_long_gap(v):
+    v.validate(grid(power=300.0), "grid")
+    assert v.validate(grid(power=4000.0, imp=42002.0, at=T0 + 600), "grid")[0]
+
+
+def test_jump_check_gap_can_be_disabled():
+    v = SensorValidator(ValidationConfig(power_jump_max_gap=0))
+    v.validate(grid(power=300.0), "grid")
+    assert not v.validate(grid(power=4000.0, imp=42002.0, at=T0 + 600), "grid")[0]
+
+
+def test_device_time_not_trusted_beyond_alignment_skew(v):
+    # 45 s offset: below clock_offset_warn (60) but above max_alignment_skew (30)
+    ts = datetime.fromtimestamp(T0 - 45).isoformat(timespec="seconds")
+    assert v.validate(grid(ts=ts), "grid")[0]
+    assert v.clock_offset("grid") == 45.0 and not v.device_time_trusted("grid")

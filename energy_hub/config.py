@@ -98,6 +98,7 @@ class ValidationConfig:
     meter_noise_tolerance: float = 0.1   # kWh, allowed backwards jitter / rate slack
     rate_safety_factor: float = 2.0      # multiplier on the physical max energy step
     power_jump_confirm: float = 3000.0   # W, larger jumps need a confirming 2nd reading (0 = off)
+    power_jump_max_gap: int = 120        # s, no jump check when the previous reading is older (0 = always)
     max_consecutive_errors: int = 10     # progression failures before forced re-baselining
     quality_check_window: int = 20       # readings in the rolling quality window
     quality_alert_threshold: float = 0.5 # alert when rejected fraction exceeds this

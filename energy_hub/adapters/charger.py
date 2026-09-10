@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 logger = logging.getLogger("energy_hub.adapters.charger")
@@ -22,7 +23,10 @@ def parse_charger_nrg(payload: bytes | str) -> float | None:
         if not isinstance(data, list) or len(data) < 12:
             logger.warning("Charger nrg payload too short: %d elements", len(data) if isinstance(data, list) else 0)
             return None
-        return float(data[11])
+        power = float(data[11])
+        if not math.isfinite(power):
+            raise ValueError(f"non-finite power {power}")
+        return power
     except (json.JSONDecodeError, TypeError, ValueError, IndexError) as exc:
         logger.warning("Failed to parse charger nrg payload: %s", exc)
         return None
