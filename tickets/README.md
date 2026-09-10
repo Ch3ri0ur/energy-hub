@@ -9,7 +9,6 @@ T01 first because every other ticket's "Tests" section depends on it.
 |---|-------|------|--------|------|
 | [T01](T01-test-and-lint-scaffolding.md) | Extend the test suite (scaffolding exists) | P1 | M | foundation |
 | [T14](T14-anker-optional-import-and-dependency-pin.md) | Pin anker-solix-api to a git rev (import compat already done) | P3 | XS | packaging |
-| [T22](T22-readme-topic-contract.md) | README with MQTT topic contract | P2 | M | docs |
 
 Done directly (2026-09-10), no ticket needed:
 - Validator overhaul → `energy_hub/validation.py` (bounds / first-reading floor / monotonic / rate; held-for-confirmation for counter jumps and power jumps > 3 kW, so single garbage values never reach the output and a poisoned baseline recovers in two readings; forced re-baseline after N failures as backstop; device time never rejects, clock offset tracked). Superseded T06, T07.
@@ -25,6 +24,7 @@ Done directly (2026-09-10), no ticket needed:
 - Config loader warns about unknown keys, coerces scalar types with clear errors, defaults an empty backoff list; stale policy reduced to `zero_after`; engine access serialised with an RLock; webhook delivery moved to a background thread (T17, T21, T23).
 - Telegraf drop-in is a pure inputs file again with QoS 1 and extra stale/age/quality fields; systemd unit uses `--frozen --no-sync`, `Restart=always`, `TimeoutStopSec`; `logging.console` switch to avoid double logging under journald (T18, T19).
 - Adapter tests for Tasmota, charger and Anker snapshot parsing (T01, except the remaining items listed in the ticket).
+- README with the full MQTT topic contract (T22).
 
 Dependencies: T01 → all. T14 removes the import stub introduced in T01.  
 
