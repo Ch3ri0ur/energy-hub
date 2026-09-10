@@ -30,6 +30,8 @@ def test_alerts_never_retained_and_offline_payload():
     assert c.published[-1].retain is False
     off = json.loads(p.offline_payload())
     assert off["status"] == "offline" and off["connected"] is False and "hub_offline" in off["issues"]
+    assert "timestamp" not in off            # Last Will: null would be dropped by Telegraf json_v2
+    assert json.loads(p.offline_payload(12.5))["timestamp"] == 12.5
     assert p.health_topic == "energy/health"
 
 

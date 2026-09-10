@@ -54,15 +54,23 @@ class Publisher:
 
     @staticmethod
     def offline_payload(timestamp: float | None = None) -> str:
-        """Retained health payload used as MQTT Last Will and on clean shutdown."""
-        return json.dumps({
+        """Retained health payload used as MQTT Last Will and on clean shutdown.
+
+        The Last Will is registered at connect time, so it cannot carry the time
+        of death: the key is omitted rather than set to null, which Telegraf's
+        json_v2 parser rejects ("timestamp path returned NULL").  The Telegraf
+        health consumer therefore uses the arrival time, see docs/telegraf-energy.conf.
+        """
+        payload: dict[str, Any] = {
             "status": "offline",
             "connected": False,
             "anker_plugin_alive": False,
             "issues": ["hub_offline"],
             "sources": {},
-            "timestamp": timestamp,
-        }, separators=(",", ":"))
+        }
+        if timestamp is not None:
+            payload["timestamp"] = timestamp
+        return json.dumps(payload, separators=(",", ":"))
 
     def publish_offline(self) -> None:
         try:
