@@ -161,3 +161,19 @@ def test_failback_immediate_when_anker_dies():
     e.update_grid_tasmota(grid(510.0, now - 10, imp=42001.5))
     e.update_grid_anker(anker(255.0, now - 400))          # anker stale now → no reason to hold
     assert e.snapshot()["grid"]["source"] == "tasmota"
+
+
+# --- dead flags ---------------------------------------------------------------
+
+def test_dead_flags():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now - 400))          # beyond zero_after (300)
+    e.update_pv(pv(1000.0, now - 200))                     # stale (>120) but not dead
+    s = e.snapshot()
+    assert s["grid"]["stale"] and s["grid"]["dead"] and s["grid"]["power"] == 0.0
+    assert s["pv_roof"]["stale"] and not s["pv_roof"]["dead"] and s["pv_roof"]["power"] == 1000.0
+    assert s["pv_total"]["stale"] and s["pv_total"]["dead"] is False   # roof still delivering
+    assert s["battery"]["dead"] and s["charger"]["dead"]
+    assert s["pv_balcony"]["dead"]
+    assert s["house"]["dead"]

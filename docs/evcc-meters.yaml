@@ -4,9 +4,20 @@
 # The energy-hub publishes pre-aggregated, validated data to `energy/` topics
 # so evcc no longer parses raw Tasmota or Anker payloads directly.
 #
-# Grid:  energy/grid   → {"power": ..., "energy_import": ..., "energy_export": ..., "source": ..., "stale": ...}
-# PV:    energy/pv/total → {"power": ...}
-# Battery: energy/battery → {"soc": ..., "power": ..., "state": ...}
+# Grid:  energy/grid   → {"power": ..., "energy_import": ..., "energy_export": ..., "source": ..., "stale": ..., "dead": ...}
+# PV:    energy/pv/total → {"power": ..., "generation": ..., "stale": ..., "dead": ...}
+# Battery: energy/battery → {"soc": ..., "power": ..., "state": ..., "stale": ..., "dead": ...}
+#
+# Staleness: "stale" means older than the source's stale_timeout but still the
+# last known value.  "dead" means no data beyond the grace period; the hub then
+# publishes null for power/soc on these topics (the aggregated blob keeps 0 for
+# Telegraf).  jq yields null, evcc reports the meter as faulty and stops relying
+# on it — safer than a fabricated 0 W / 0 %.  Verify once in the evcc log that a
+# null produces a meter error rather than being read as 0.
+#
+# The cumulative counters (energy_import/energy_export) always come from the
+# Tasmota SML meter, even while power comes from the Anker meter during failover
+# (see "energy_source"), so evcc's energy statistics never see a step change.
 
 meters:
   - name: my_grid

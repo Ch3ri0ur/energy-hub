@@ -14,6 +14,31 @@ from .config import OutputConfig
 logger = logging.getLogger("energy_hub.publisher")
 
 
+# Fields that are set to null on the per-topic (evcc-facing) payloads when the
+# source is dead.  evcc reads these via jq; a null makes the meter fail loudly,
+# whereas the 0 kept in the aggregated blob (for Telegraf) would be taken as a
+# real reading and used for charging decisions.
+_NULL_WHEN_DEAD: dict[str, tuple[str, ...]] = {
+    "grid": ("power", "import_w", "export_w"),
+    "pv_roof": ("power",),
+    "pv_balcony": ("power", "output_power", "pv_1_power", "pv_2_power", "pv_3_power", "pv_4_power"),
+    "pv_total": ("power", "generation"),
+    "battery": ("soc", "power", "charge_w", "discharge_w", "energy_wh"),
+    "charger": ("power", "raw_power"),
+    "house": ("power",),
+}
+
+
+def _for_topic(section: dict[str, Any] | None, key: str) -> dict[str, Any] | None:
+    """Copy of a snapshot section with dead-source values replaced by null."""
+    if not section or not section.get("dead"):
+        return section
+    out = dict(section)
+    for field in _NULL_WHEN_DEAD.get(key, ()):
+        out[field] = None
+    return out
+
+
 class Publisher:
     """Publish engine snapshots to local MQTT as individual + aggregated topics."""
 
@@ -56,16 +81,16 @@ class Publisher:
         prefix = self._prefix
         retain = self._cfg.retain
 
-        # Individual topics
-        self._pub(f"{prefix}/grid", snapshot.get("grid"), retain)
-        self._pub(f"{prefix}/pv/roof", snapshot.get("pv_roof"), retain)
-        self._pub(f"{prefix}/pv/balcony", snapshot.get("pv_balcony"), retain)
-        self._pub(f"{prefix}/pv/total", snapshot.get("pv_total"), retain)
-        self._pub(f"{prefix}/battery", snapshot.get("battery"), retain)
-        self._pub(f"{prefix}/charger", snapshot.get("charger"), retain)
-        self._pub(f"{prefix}/house", snapshot.get("house"), retain)
+        # Individual topics (evcc and friends): null instead of 0 for dead sources
+        self._pub(f"{prefix}/grid", _for_topic(snapshot.get("grid"), "grid"), retain)
+        self._pub(f"{prefix}/pv/roof", _for_topic(snapshot.get("pv_roof"), "pv_roof"), retain)
+        self._pub(f"{prefix}/pv/balcony", _for_topic(snapshot.get("pv_balcony"), "pv_balcony"), retain)
+        self._pub(f"{prefix}/pv/total", _for_topic(snapshot.get("pv_total"), "pv_total"), retain)
+        self._pub(f"{prefix}/battery", _for_topic(snapshot.get("battery"), "battery"), retain)
+        self._pub(f"{prefix}/charger", _for_topic(snapshot.get("charger"), "charger"), retain)
+        self._pub(f"{prefix}/house", _for_topic(snapshot.get("house"), "house"), retain)
 
-        # Full aggregated blob (for Telegraf / InfluxDB)
+        # Full aggregated blob (for Telegraf / InfluxDB): always numeric
         self._pub(f"{prefix}/aggregated", snapshot, retain)
 
         self._last_publish = time.time()

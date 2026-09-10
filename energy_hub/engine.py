@@ -279,16 +279,16 @@ class Engine:
         pv_reading = self._aligned_reading(self._pv_history, self.pv_roof, reference_time)
         sb = self._aligned_reading(self._solarbank_history, self.solarbank, reference_time)
 
-        # Grid
+        # Grid.  "stale" = older than stale_timeout, "dead" = beyond the grace
+        # deadline (power zeroed here; the evcc-facing topics publish null instead).
         if grid_reading:
             grid_age = grid_reading.age()
             grid_stale = grid_age > grid_stale_timeout
-            grid_power = grid_reading.power
-            if grid_age > self._stale_grace_deadline(grid_stale_timeout):
-                grid_power = 0.0
+            grid_dead = grid_age > self._stale_grace_deadline(grid_stale_timeout)
+            grid_power = 0.0 if grid_dead else grid_reading.power
         else:
             grid_power = 0.0
-            grid_stale = True
+            grid_stale = grid_dead = True
 
         # Cumulative energy counters always come from the official (Tasmota SML) meter
         # when it has ever reported: a counter that pauses during an outage and then
@@ -306,6 +306,9 @@ class Engine:
         # PV roof
         pv_power, pv_stale = self._effective_power(
             pv_reading, self._cfg.sources.tasmota_pv.stale_timeout,
+        )
+        pv_dead = pv_reading is None or pv_reading.age() > self._stale_grace_deadline(
+            self._cfg.sources.tasmota_pv.stale_timeout
         )
 
         # Solarbank / balcony
@@ -368,12 +371,14 @@ class Engine:
                 "energy_stale": energy_stale,
                 "source": grid_source,            # meter the power comes from
                 "stale": grid_stale,
+                "dead": grid_dead,
             },
             # PV roof
             "pv_roof": {
                 "power": round(pv_power, 1),
                 "energy": round(pv_reading.energy_import, 3) if pv_reading else 0.0,
                 "stale": pv_stale,
+                "dead": pv_dead,
             },
             # PV balcony (solarbank)
             "pv_balcony": {
@@ -384,11 +389,14 @@ class Engine:
                 "pv_4_power": round(sb_pv_4_power, 1),
                 "output_power": round(sb_output, 1),
                 "stale": sb_stale,
+                "dead": sb_zeroed,
             },
             # Total PV
             "pv_total": {
                 "power": round(total_pv, 1),                       # AC-bus contribution (house balance)
                 "generation": round(pv_total_generation, 1),       # actual panel output (roof + balcony panels)
+                "stale": pv_stale or sb_stale,
+                "dead": pv_dead and sb_zeroed,                     # no PV source delivering at all
             },
             # Battery
             "battery": {
@@ -399,16 +407,20 @@ class Engine:
                 "energy_wh": round(sb.battery_energy_wh, 1) if sb and not sb_zeroed else 0.0,
                 "state": battery_state,
                 "stale": sb_stale,
+                "dead": sb_zeroed,
             },
             # Charger
             "charger": {
                 "power": round(charger, 1),
                 "raw_power": round(raw_charger, 1),
                 "stale": charger_stale,
+                "dead": charger_stale,   # charger has no grace period: stale = zeroed
             },
-            # House load
+            # House load (derived from grid; meaningless without a grid reading)
             "house": {
                 "power": round(house_load, 1),
+                "stale": grid_stale,
+                "dead": grid_dead,
             },
             # Totals
             "consumption": round(total_consumption, 1),
