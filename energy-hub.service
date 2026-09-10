@@ -12,6 +12,8 @@ WorkingDirectory=/home/chriu/energy-hub
 ExecStart=/home/chriu/.local/bin/uv run --frozen --no-sync --project /home/chriu/energy-hub energy-hub -c /home/chriu/energy-hub/config.yaml
 Restart=always
 RestartSec=10
+# A broken config.yaml exits with 78 (EX_CONFIG); restarting would not help.
+RestartPreventExitStatus=78
 # Give the hub time to publish the offline health payload and stop the Anker thread.
 TimeoutStopSec=20
 

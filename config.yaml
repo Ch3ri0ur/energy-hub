@@ -1,6 +1,9 @@
 # energy-hub configuration
-# Environment variables override any value here (prefix: EH_)
-# e.g. EH_MQTT_PASSWORD, EH_ANKER_USER, EH_ANKER_PASSWORD, EH_ANKER_COUNTRY
+# Secrets and a few connection settings can be overridden by environment
+# variables (also read from .env): EH_MQTT_PASSWORD, EH_MQTT_USERNAME,
+# EH_MQTT_BROKER, EH_MQTT_PORT, EH_ANKER_USER, EH_ANKER_PASSWORD,
+# EH_ANKER_COUNTRY, EH_ALERT_WEBHOOK, EH_LOG_LEVEL.  Everything else is
+# configured here only.
 
 mqtt:
   broker: 192.168.1.34
@@ -72,8 +75,8 @@ validation:
 # Gas impulse counter (Zigbee2MQTT BK4 meter via door/contact sensor)
 gas:
   impulse_topic: zigbee2mqtt/GasImpulsCounter
-  sync_topic: energy/gas/set        # publish {"volume_m3": 12345.67} here to sync
-  publish_topic: energy/gas
+  sync_topic: energy/gas/set        # publish {"volume_m3": 12345.67} here to sync (default: {prefix}/gas/set)
+  publish_topic: energy/gas         # default: {prefix}/gas
   state_file: gas_state.json        # persisted impulse counter
   impulse_m3: 0.01                  # m³ per tick (BK4)
   retain: true

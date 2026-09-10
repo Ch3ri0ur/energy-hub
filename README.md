@@ -110,11 +110,14 @@ in sync.
 ## Configuration
 
 `config.yaml` (see the comments there) plus `EH_*` environment variables for
-secrets: `EH_MQTT_PASSWORD`, `EH_MQTT_BROKER`, `EH_MQTT_PORT`, `EH_ANKER_USER`,
-`EH_ANKER_PASSWORD`, `EH_ANKER_COUNTRY`, `EH_ALERT_WEBHOOK`. A `.env` file next
-to the config is loaded automatically (`.env.example`). Unknown keys are logged,
-wrong types fail at start-up. The Anker bridge is enabled when user and password
-are set.
+secrets and connection settings: `EH_MQTT_PASSWORD`, `EH_MQTT_USERNAME`,
+`EH_MQTT_BROKER`, `EH_MQTT_PORT`, `EH_ANKER_USER`, `EH_ANKER_PASSWORD`,
+`EH_ANKER_COUNTRY`, `EH_ALERT_WEBHOOK`, `EH_LOG_LEVEL` (no other key has an env
+override). A `.env` file next to the config is loaded automatically
+(`.env.example`; keep it `KEY=value` without inline comments, systemd reads it
+too). Unknown keys are logged, wrong types fail at start-up with exit status 78
+(systemd does not restart on it). The Anker bridge is enabled when user and
+password are set.
 
 ## Running
 

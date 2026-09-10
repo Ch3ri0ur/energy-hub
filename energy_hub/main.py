@@ -12,6 +12,7 @@ from functools import wraps
 
 import paho.mqtt.client as mqtt
 
+from . import __version__
 from .adapters.anker_data import parse_anker_snapshot
 from .adapters.charger import parse_charger_nrg
 from .adapters.tasmota_sml import parse_tasmota_sml
@@ -22,6 +23,8 @@ from .health import HealthMonitor
 from .publisher import Publisher
 
 logger = logging.getLogger("energy_hub")
+
+EX_CONFIG = 78   # sysexits.h: configuration error
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +229,8 @@ def _run(cfg: AppConfig) -> None:
 
     # --- Periodic tick ---
     last_health = 0.0
-    logger.info("energy-hub running (publish every %ds, health every %ds)",
-                cfg.output.publish_interval, cfg.output.health_interval)
+    logger.info("energy-hub %s running (publish every %ds, health every %ds)",
+                __version__, cfg.output.publish_interval, cfg.output.health_interval)
 
     try:
         while not shutdown:
@@ -281,7 +284,13 @@ def main() -> None:
     args = parser.parse_args()
 
     env_file = args.env_file or None
-    cfg = load_config(args.config, env_file=env_file)
+    try:
+        cfg = load_config(args.config, env_file=env_file)
+    except ValueError as exc:
+        # EX_CONFIG: the unit sets RestartPreventExitStatus=78 so a broken config
+        # does not restart-loop every 10 s forever.
+        print(f"energy-hub: {exc}", file=sys.stderr)
+        sys.exit(EX_CONFIG)
     _setup_logging(cfg)
     _run(cfg)
 

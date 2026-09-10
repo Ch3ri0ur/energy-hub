@@ -58,3 +58,46 @@ def test_repo_config_loads_clean(caplog):
         cfg = load_config("config.yaml", env_file=None)
     assert "unknown" not in caplog.text
     assert cfg.sources.tasmota_grid.failback_after == 60
+
+
+def test_more_env_overrides_and_port_coercion(tmp_path, monkeypatch):
+    monkeypatch.setenv("EH_MQTT_USERNAME", "alice")
+    monkeypatch.setenv("EH_LOG_LEVEL", "debug")
+    monkeypatch.setenv("EH_MQTT_PORT", "1884")
+    cfg = load_config(tmp_path / "none.yaml", env_file=None)
+    assert cfg.mqtt.username == "alice" and cfg.logging.level == "debug" and cfg.mqtt.port == 1884
+    monkeypatch.setenv("EH_MQTT_PORT", "abc")
+    with pytest.raises(ValueError, match="EH_MQTT_PORT"):
+        load_config(tmp_path / "none.yaml", env_file=None)
+
+
+def test_gas_topics_follow_output_prefix(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("output:\n  prefix: home/\n")
+    cfg = load_config(p, env_file=None)
+    assert cfg.gas.publish_topic == "home/gas" and cfg.gas.sync_topic == "home/gas/set"
+    p.write_text("output:\n  prefix: home\ngas:\n  publish_topic: other/gas\n")
+    cfg = load_config(p, env_file=None)
+    assert cfg.gas.publish_topic == "other/gas" and cfg.gas.sync_topic == "home/gas/set"
+
+
+def test_invalid_yaml_is_a_config_error(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("mqtt: [unclosed\n")
+    with pytest.raises(ValueError, match="not valid YAML"):
+        load_config(p, env_file=None)
+    p.write_text("- just\n- a list\n")
+    with pytest.raises(ValueError, match="mapping"):
+        load_config(p, env_file=None)
+
+
+def test_main_exits_78_on_config_error(tmp_path, monkeypatch, capsys):
+    from energy_hub.main import main
+
+    p = tmp_path / "c.yaml"
+    p.write_text("mqtt:\n  port: notaport\n")
+    monkeypatch.setattr("sys.argv", ["energy-hub", "-c", str(p), "-e", ""])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 78
+    assert "mqtt.port" in capsys.readouterr().err

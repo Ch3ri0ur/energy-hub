@@ -44,6 +44,11 @@ class AlertManager:
         # issue -> (last_send_time, backoff_stage)
         self._state: dict[str, tuple[float, int]] = {}
         self._last_issues: set[str] = set()
+        # issue -> time it last recovered (while it stays clear)
+        self._cleared_at: dict[str, float] = {}
+        # issues whose warning actually went to the webhook and has not been
+        # followed by an "All clear" yet
+        self._webhook_open: set[str] = set()
 
     def check(
         self,
@@ -60,12 +65,26 @@ class AlertManager:
 
         # Keep the backoff state of recovered issues for a while: an issue that
         # recovers and comes back five minutes later (flaky WiFi) must continue its
-        # backoff instead of alerting again at stage 0.
-        cooldown = self._cfg.backoff_stages[-1] if self._cfg.backoff_stages else 0
+        # backoff instead of alerting again at stage 0.  But an issue that stayed
+        # clear for a whole first-stage delay is a new incident: forget its stage,
+        # otherwise a once-a-day problem escalates to the one-week stage and goes
+        # silent.
+        stages = self._cfg.backoff_stages
+        cooldown = stages[-1] if stages else 0
+        first_stage = stages[0] if stages else 0
+        for issue in recovered:
+            self._cleared_at[issue] = now
+        for issue in current:
+            self._cleared_at.pop(issue, None)
         for issue in list(self._state):
+            if issue in current:
+                continue
             last, _ = self._state[issue]
-            if issue not in current and now - last > cooldown:
+            cleared = self._cleared_at.get(issue)
+            long_clear = cleared is not None and now - cleared > first_stage
+            if now - last > cooldown or long_clear:
                 del self._state[issue]
+                self._cleared_at.pop(issue, None)
 
         for issue in current:
             if not self._should_send(issue, now):
@@ -83,6 +102,7 @@ class AlertManager:
             publish_cb(payload)
             if severity != "info":
                 self._webhook(msg, severity, issue, now)
+                self._webhook_open.add(issue)
             logger.info("Alert sent: %s (stage %d)", issue, stage)
 
         for issue in sorted(recovered):
@@ -105,7 +125,12 @@ class AlertManager:
                 "context": context,
             }
             publish_cb(payload)
-            self._webhook("All clear", "info", "recovered", now)
+            # Push an "All clear" only when a warning was pushed before: an info
+            # issue (Tasmota reader flapping while Anker covers) never reaches the
+            # webhook, so neither must its recovery.
+            if self._webhook_open:
+                self._webhook("All clear", "info", "recovered", now)
+                self._webhook_open.clear()
             logger.info("Recovery alert sent")
 
         self._last_issues = current
@@ -148,7 +173,7 @@ class AlertManager:
                 method="POST",
             )
             urllib.request.urlopen(req, timeout=5).read()  # noqa: S310
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, ValueError) as exc:   # ValueError: bad URL
             logger.error("Webhook failed: %s", exc)
 
 

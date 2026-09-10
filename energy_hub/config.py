@@ -14,6 +14,14 @@ from dotenv import load_dotenv
 logger = logging.getLogger("energy_hub.config")
 
 
+# The environment overrides, all prefixed EH_: only these keys, not every option.
+ENV_KEYS = (
+    "MQTT_PASSWORD", "MQTT_USERNAME", "MQTT_BROKER", "MQTT_PORT",
+    "ANKER_USER", "ANKER_PASSWORD", "ANKER_COUNTRY",
+    "ALERT_WEBHOOK", "LOG_LEVEL",
+)
+
+
 def _env(key: str) -> str | None:
     """Read an EH_-prefixed environment variable."""
     return os.environ.get(f"EH_{key}")
@@ -229,8 +237,13 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
     path = Path(path)
     raw: dict[str, Any] = {}
     if path.exists():
-        with open(path) as f:
-            raw = yaml.safe_load(f) or {}
+        try:
+            with open(path) as f:
+                raw = yaml.safe_load(f) or {}
+        except yaml.YAMLError as exc:
+            raise ValueError(f"config: {path} is not valid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"config: {path} must contain a mapping at the top level")
 
     top_unknown = sorted(set(raw) - set(AppConfig.__dataclass_fields__))
     if top_unknown:
@@ -238,9 +251,10 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
 
     mqtt = _merge(MqttConfig, raw.get("mqtt"), "mqtt")
     mqtt.password = str(_env_or("MQTT_PASSWORD", mqtt.password))
+    mqtt.username = str(_env_or("MQTT_USERNAME", mqtt.username))
     mqtt.broker = str(_env_or("MQTT_BROKER", mqtt.broker))
     if port := _env("MQTT_PORT"):
-        mqtt.port = int(port)
+        mqtt.port = _coerce(port, int, "EH_MQTT_PORT")
 
     anker = _merge(AnkerConfig, raw.get("anker"), "anker")
     anker.user = str(_env_or("ANKER_USER", anker.user))
@@ -271,7 +285,16 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
     alerts.backoff_stages = [int(x) for x in alerts.backoff_stages]
 
     logging_cfg = _merge(LoggingConfig, raw.get("logging"), "logging")
-    gas = _merge(GasConfig, raw.get("gas"), "gas")
+    logging_cfg.level = str(_env_or("LOG_LEVEL", logging_cfg.level))
+
+    gas_raw = raw.get("gas") or {}
+    gas = _merge(GasConfig, gas_raw, "gas")
+    # Gas topics follow output.prefix unless set explicitly.
+    prefix = output.prefix.rstrip("/")
+    if "publish_topic" not in gas_raw:
+        gas.publish_topic = f"{prefix}/gas"
+    if "sync_topic" not in gas_raw:
+        gas.sync_topic = f"{prefix}/gas/set"
 
     return AppConfig(
         mqtt=mqtt,

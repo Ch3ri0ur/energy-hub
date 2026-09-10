@@ -100,3 +100,60 @@ def test_webhook_does_not_block(monkeypatch):
     assert time.time() - t0 < 1.0
     assert started.wait(2)
     release.set()
+
+
+# --- webhook "All clear" and stage reset --------------------------------------
+
+def webhook_calls(monkeypatch):
+    calls = []
+    import energy_hub.health as health
+
+    monkeypatch.setattr(health.AlertManager, "_webhook", lambda self, msg, sev, issue, ts: calls.append(issue))
+    return calls
+
+
+def test_all_clear_not_pushed_after_info_only_issue(monkeypatch):
+    calls = webhook_calls(monkeypatch)
+    m = mon(webhook_url="http://example.invalid/hook")
+    m.process({"issues": ["grid_tasmota_stale"]}, lambda p: None)   # info: no push
+    m.process({"issues": []}, lambda p: None)
+    assert calls == []
+    m.process({"issues": ["grid_stale"]}, lambda p: None)           # warning: pushed
+    m.process({"issues": []}, lambda p: None)
+    assert calls == ["grid_stale", "recovered"]
+    m.process({"issues": ["grid_tasmota_stale"]}, lambda p: None)
+    m.process({"issues": []}, lambda p: None)
+    assert calls == ["grid_stale", "recovered"]                      # no second "All clear"
+
+
+def test_stage_resets_after_a_long_clear_period(monkeypatch):
+    import energy_hub.health as health
+
+    now = [1_800_000_000.0]
+    monkeypatch.setattr(health.time, "time", lambda: now[0])
+    m = mon(backoff_stages=[3600, 43200])
+    out = []
+    m.process({"issues": ["pv_stale"]}, out.append)
+    now[0] += 600
+    m.process({"issues": []}, out.append)                # clear for 2 h (> first stage)
+    now[0] += 7200
+    m.process({"issues": []}, out.append)
+    m.process({"issues": ["pv_stale"]}, out.append)      # new incident: alerted at stage 0 again
+    warnings = [a for a in out if a["issue"] == "pv_stale" and a["severity"] == "warning"]
+    assert len(warnings) == 2
+
+
+def test_stage_kept_when_issue_returns_quickly(monkeypatch):
+    import energy_hub.health as health
+
+    now = [1_800_000_000.0]
+    monkeypatch.setattr(health.time, "time", lambda: now[0])
+    m = mon(backoff_stages=[3600, 43200])
+    out = []
+    m.process({"issues": ["pv_stale"]}, out.append)
+    now[0] += 600
+    m.process({"issues": []}, out.append)
+    now[0] += 600
+    m.process({"issues": ["pv_stale"]}, out.append)      # back after 10 min: still in backoff
+    warnings = [a for a in out if a["issue"] == "pv_stale" and a["severity"] == "warning"]
+    assert len(warnings) == 1
