@@ -49,3 +49,27 @@ def test_dead_sources_publish_null_on_topics_but_zero_in_aggregated():
     assert json.loads(c.topics("energy/pv/total")[0].payload)["power"] == 0.0     # not dead → numeric
     agg = json.loads(c.topics("energy/aggregated")[0].payload)
     assert agg["grid"]["power"] == 0.0 and agg["battery"]["soc"] == 0.0
+
+
+def test_telegraf_topics_use_qos1_and_publish_failures_are_logged_once(caplog):
+    c = FakeClient()
+    p = Publisher(c, OutputConfig())
+    p.publish_snapshot(snapshot())
+    p.publish_health({"status": "ok"})
+    qos = {m.topic: m.qos for m in c.published}
+    assert qos["energy/aggregated"] == 1 and qos["energy/health"] == 1 and qos["energy/grid"] == 0
+    c.rc = 4   # MQTT_ERR_NO_CONN
+    with caplog.at_level("WARNING"):
+        p.publish_snapshot(snapshot())
+        p.publish_snapshot(snapshot())
+    assert caplog.text.count("failed (rc=4)") == 1
+    c.rc = 0
+    with caplog.at_level("INFO"):
+        p.publish_snapshot(snapshot())
+    assert "works again" in caplog.text
+
+
+def test_publish_offline_with_fake_client():
+    c = FakeClient()
+    Publisher(c, OutputConfig()).publish_offline()
+    assert json.loads(c.published[-1].payload)["status"] == "offline"

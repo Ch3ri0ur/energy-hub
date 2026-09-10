@@ -127,3 +127,50 @@ def test_backoff_resets_when_session_connects():
     assert plugin._backoff == AnkerPlugin.BACKOFF_MIN and plugin.is_alive()
     plugin._set_alive(False)
     assert not plugin.is_alive()
+
+
+# --- stop() during auth/discovery -------------------------------------------
+
+def test_bridge_is_cancelled_by_stop_while_authenticating():
+    from energy_hub.anker_plugin import _run_bridge_until_stopped
+
+    class HangingApi:
+        def __init__(self, *a, **k):
+            pass
+
+        async def async_authenticate(self):
+            await asyncio.sleep(3600)   # cloud unreachable
+
+    async def main():
+        stop = asyncio.Event()
+        task = asyncio.create_task(_run_bridge_until_stopped(
+            AnkerConfig(user="u", password="p"), lambda s: None, HangingApi, lambda alive: None, stop_event=stop,
+        ))
+        await asyncio.sleep(0.05)
+        assert not task.done()
+        stop.set()
+        await asyncio.wait_for(task, timeout=2)
+
+    t0 = time.monotonic()
+    asyncio.run(main())
+    assert time.monotonic() - t0 < 2
+
+
+def test_bridge_errors_still_propagate_to_the_retry_loop():
+    from energy_hub.anker_plugin import _run_bridge_until_stopped
+
+    class FailingApi:
+        def __init__(self, *a, **k):
+            pass
+
+        async def async_authenticate(self):
+            raise LookupError("no devices")
+
+    async def main():
+        await _run_bridge_until_stopped(
+            AnkerConfig(user="u", password="p"), lambda s: None, FailingApi, lambda alive: None,
+            stop_event=asyncio.Event(),
+        )
+
+    with pytest.raises(LookupError):
+        asyncio.run(main())

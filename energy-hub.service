@@ -20,13 +20,37 @@ TimeoutStopSec=20
 # Credentials via environment file (not in systemd unit)
 EnvironmentFile=-/home/chriu/energy-hub/.env
 
-# Hardening
+# State: /var/lib/energy-hub (gas_state.json, see gas.state_file in config.yaml).
+# Logs go to the journal (logging.file is empty in config.yaml).
+StateDirectory=energy-hub
+StateDirectoryMode=0750
+
+# Hardening. The project dir, config and .env are read-only for the service.
 NoNewPrivileges=true
 ProtectSystem=strict
-# The project dir must be writable for gas_state.json and energy_hub.log.
-# /home/chriu/anker-solix-api (editable dependency) is only read.
-ReadWritePaths=/home/chriu/energy-hub
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+UMask=0077
+# anker-solix-api caches its cloud login token inside its own package directory
+# (falls back to a private /tmp otherwise, i.e. a fresh login on every start).
+# Both layouts listed; missing paths are ignored (leading "-"). Create the one
+# for the installed version: mkdir -p <path>.
+ReadWritePaths=-/home/chriu/anker-solix-api/api/authcache
+ReadWritePaths=-/home/chriu/anker-solix-api/src/anker_solix_api/authcache
 
 [Install]
 WantedBy=multi-user.target

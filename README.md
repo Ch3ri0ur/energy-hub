@@ -126,9 +126,45 @@ uv sync --frozen            # anker-solix-api is expected at ../anker-solix-api 
 uv run energy-hub -c config.yaml
 ```
 
-Deployment: `energy-hub.service` (systemd, hardened, `uv run --frozen --no-sync`),
+## Deployment
+
+Files: `energy-hub.service` (systemd, hardened, `uv run --frozen --no-sync`),
 `docs/telegraf-energy.conf` (Telegraf inputs drop-in), `docs/evcc-meters.yaml`
 (evcc meter definitions), `dashboard.json` (Grafana).
+
+First install on the box (user `chriu`, paths as in the unit):
+
+```sh
+git clone <this repo> ~/energy-hub && git clone <anker-solix-api> ~/anker-solix-api
+cd ~/energy-hub && uv sync --frozen
+cp .env.example .env && chmod 600 .env && $EDITOR .env
+sudo install -d -o chriu -g chriu -m 750 /var/lib/energy-hub        # gas_state.json lives here
+mkdir -p ~/anker-solix-api/src/anker_solix_api/authcache            # or api/authcache for 3.5.x
+sudo cp energy-hub.service /etc/systemd/system/ && sudo systemctl daemon-reload
+sudo systemctl enable --now energy-hub
+journalctl -u energy-hub -f
+```
+
+Upgrade: `git pull`, `uv sync --frozen`, `sudo systemctl restart energy-hub`, then
+check the journal for `energy-hub <version> running` and, with Anker enabled,
+`Anker cloud auth` / `Using meter`. If the unit changed: copy it again and
+`daemon-reload` first. A config error exits with status 78 and the unit does
+not restart on it; fix `config.yaml` and `systemctl restart`.
+
+Moving an existing install to the state directory: stop the service, move
+`gas_state.json` to `/var/lib/energy-hub/`, start again (or re-sync via
+`energy/gas/set`). Logs go to the journal only; `logging.file` can be set
+for hand-run instances.
+
+Smoke test from any machine on the LAN:
+
+```sh
+mosquitto_sub -h 192.168.1.34 -u mqttu -P "$EH_MQTT_PASSWORD" -v -t 'energy/#'
+```
+
+Note for the Grafana gas panels: they plot `non_negative_difference` of the
+volume, so an upward re-sync via `energy/gas/set` shows up as consumption on
+that day. Sync when the counter drifts, not as a habit.
 
 ## Development
 

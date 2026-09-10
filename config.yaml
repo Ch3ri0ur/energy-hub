@@ -77,7 +77,7 @@ gas:
   impulse_topic: zigbee2mqtt/GasImpulsCounter
   sync_topic: energy/gas/set        # publish {"volume_m3": 12345.67} here to sync (default: {prefix}/gas/set)
   publish_topic: energy/gas         # default: {prefix}/gas
-  state_file: gas_state.json        # persisted impulse counter
+  state_file: /var/lib/energy-hub/gas_state.json  # persisted impulse counter (StateDirectory in the unit)
   impulse_m3: 0.01                  # m³ per tick (BK4)
   retain: true
 
@@ -100,10 +100,12 @@ alerts:
     - 172800  # 2 days
     - 604800  # 1 week
 
-# Logging
+# Logging. Under systemd the console (stderr) goes to the journal, so no file is
+# needed: `journalctl -u energy-hub -f`. Set file to e.g. energy_hub.log when
+# running by hand without journald and you want a log to look at later.
 logging:
-  file: energy_hub.log  # "" to disable the file (e.g. rely on journald only)
+  file: ""            # "" = no rotating log file
   max_bytes: 5242880  # 5 MB
   backup_count: 3
   level: INFO
-  console: true       # false under systemd if you don't want every line twice (journal + file)
+  console: true       # stderr (the journal under systemd)

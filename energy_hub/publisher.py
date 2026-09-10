@@ -42,11 +42,16 @@ def _for_topic(section: dict[str, Any] | None, key: str) -> dict[str, Any] | Non
 class Publisher:
     """Publish engine snapshots to local MQTT as individual + aggregated topics."""
 
+    # QoS 1 for the topics Telegraf ingests, so its persistent session queues
+    # them while it is down; the evcc-facing topics stay at QoS 0 (latest wins).
+    TELEGRAF_QOS = 1
+
     def __init__(self, client: mqtt.Client, cfg: OutputConfig) -> None:
         self._client = client
         self._cfg = cfg
         self._prefix = cfg.prefix.rstrip("/")
         self._last_publish = 0.0
+        self._failing = False   # log the first failed publish and the recovery, not every tick
 
     @property
     def health_topic(self) -> str:
@@ -99,7 +104,7 @@ class Publisher:
         self._pub(f"{prefix}/house", _for_topic(snapshot.get("house"), "house"), retain)
 
         # Full aggregated blob (for Telegraf / InfluxDB): always numeric
-        self._pub(f"{prefix}/aggregated", snapshot, retain)
+        self._pub(f"{prefix}/aggregated", snapshot, retain, qos=self.TELEGRAF_QOS)
 
         self._last_publish = time.time()
         logger.debug(
@@ -110,20 +115,30 @@ class Publisher:
         )
 
     def publish_health(self, health: dict[str, Any]) -> None:
-        self._pub(self.health_topic, health, retain=self._cfg.retain)
+        self._pub(self.health_topic, health, retain=self._cfg.retain, qos=self.TELEGRAF_QOS)
 
     def publish_alert(self, alert: dict[str, Any]) -> None:
         self._pub(f"{self._prefix}/alerts", alert, retain=False)
 
-    def _pub(self, topic: str, payload: Any, retain: bool) -> None:
+    def _pub(self, topic: str, payload: Any, retain: bool, qos: int = 0) -> None:
         if payload is None:
             return
         try:
-            self._client.publish(
+            info = self._client.publish(
                 topic,
                 json.dumps(payload, separators=(",", ":")),
-                qos=0,
+                qos=qos,
                 retain=retain,
             )
         except Exception:
             logger.exception("Failed to publish to %s", topic)
+            return
+        # paho returns MQTT_ERR_NO_CONN etc. silently instead of raising.
+        rc = getattr(info, "rc", mqtt.MQTT_ERR_SUCCESS)
+        if rc != mqtt.MQTT_ERR_SUCCESS:
+            if not self._failing:
+                logger.warning("Publish to %s failed (rc=%s); broker connection lost?", topic, rc)
+                self._failing = True
+        elif self._failing:
+            logger.info("Publishing works again")
+            self._failing = False

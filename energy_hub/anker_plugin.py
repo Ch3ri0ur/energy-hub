@@ -408,6 +408,28 @@ async def _run_bridge(
             api.stopMqttSession()
 
 
+async def _run_bridge_until_stopped(*args, stop_event: asyncio.Event, **kwargs) -> None:
+    """Run :func:`_run_bridge` but cancel it as soon as ``stop_event`` is set.
+
+    ``_run_bridge`` itself only watches the stop event once the MQTT session is
+    up; while it is still authenticating or discovering devices against an
+    unreachable cloud, ``stop()`` would otherwise wait for the whole attempt.
+    """
+    cfg, local_publish, api_cls, on_connected = args
+    bridge = asyncio.create_task(_run_bridge(cfg, local_publish, stop_event, api_cls, on_connected, **kwargs))
+    stop = asyncio.create_task(stop_event.wait())
+    done, _ = await asyncio.wait({bridge, stop}, return_when=asyncio.FIRST_COMPLETED)
+    if bridge in done:
+        stop.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await stop
+        bridge.result()   # re-raises the bridge's exception, if any
+        return
+    bridge.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await bridge
+
+
 # ---------------------------------------------------------------------------
 # Public interface
 # ---------------------------------------------------------------------------
@@ -524,7 +546,9 @@ class AnkerPlugin:
                 try:
                     self._last_error = ""
                     loop.run_until_complete(
-                        _run_bridge(self._cfg, self._publish_snapshot, stop_async, api_cls, self._set_alive)
+                        _run_bridge_until_stopped(
+                            self._cfg, self._publish_snapshot, api_cls, self._set_alive, stop_event=stop_async,
+                        )
                     )
                     if self._stop.is_set():
                         break
