@@ -8,10 +8,6 @@ T01 first because every other ticket's "Tests" section depends on it.
 | # | Title | Prio | Effort | Type |
 |---|-------|------|--------|------|
 | [T01](T01-test-and-lint-scaffolding.md) | Extend the test suite (scaffolding exists) | P1 | M | foundation |
-| [T02](T02-gas-sync-key-mismatch.md) | Gas sync key `m3` vs documented `volume_m3` | P1 | XS | bug |
-| [T03](T03-gas-phantom-impulse-on-startup.md) | Gas phantom impulse on startup / retained message | P1 | XS | bug |
-| [T04](T04-gas-atomic-state-write.md) | Gas state file written non-atomically → counter reset | P1 | XS | bug |
-| [T05](T05-gas-retained-sync-and-publish-on-connect.md) | Retained sync re-applies on restart; publish on connect | P2 | S | bug |
 | [T08](T08-grid-failover-energy-counter-jump.md) | Failover swaps cumulative energy counters (kWh jump) | P1 | S | bug |
 | [T10](T10-mqtt-connect-robustness-and-routing.md) | Crash if broker down at start; wildcard routing | P2 | S | robustness |
 | [T11](T11-last-will-offline-health.md) | Last Will so `energy/health` goes offline when hub dies | P2 | XS | robustness |
@@ -35,6 +31,8 @@ Done directly (2026-09-10), no ticket needed:
 - `energy_hub/timeutil.py` single ISO parser (was T20); ruff import fixes.
 - Alignment hardening (was T09): `max_alignment_skew` guard, fallback to current reading instead of oldest history entry, device time only trusted while in sync with host.
 - pytest/ruff scaffolding, 30 tests.
+- Anker import compatibility for both library layouts (T14 steps 0–2).
+- Gas tracker: documented sync key, no phantom impulse on start/retained messages, atomic state file, retained sync cleared, publish on connect and on battery change (T02–T05).
 
 Dependencies: T01 → all. T14 removes the import stub introduced in T01. T16 and T17
 change the snapshot/stale semantics, so do them before T22 (README). T26 touches `active_grid` like T08/T25, do them together.

@@ -135,6 +135,7 @@ def _run(cfg: AppConfig) -> None:
             for topic in routes:
                 _client.subscribe(topic)
                 logger.info("Subscribed to %s", topic)
+            gas.publish()  # refresh the retained gas topic on every (re)connect
         else:
             logger.error("MQTT connect failed: %s", reason_code)
 
