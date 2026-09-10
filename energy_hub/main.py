@@ -14,7 +14,6 @@ import paho.mqtt.client as mqtt
 from .adapters.anker_data import parse_anker_snapshot
 from .adapters.charger import parse_charger_nrg
 from .adapters.tasmota_sml import parse_tasmota_sml
-from .anker_plugin import AnkerPlugin
 from .config import AppConfig, load_config
 from .engine import Engine
 from .gas_tracker import GasTracker
@@ -155,9 +154,11 @@ def _run(cfg: AppConfig) -> None:
     client.connect(cfg.mqtt.broker, cfg.mqtt.port, cfg.mqtt.keepalive)
     client.loop_start()
 
-    # --- Anker plugin ---
-    anker: AnkerPlugin | None = None
+    # --- Anker plugin (optional; library imported lazily) ---
+    anker = None
     if cfg.anker.enabled:
+        from .anker_plugin import AnkerPlugin
+
         anker = AnkerPlugin(
             cfg=cfg.anker,
             local_mqtt_client=client,

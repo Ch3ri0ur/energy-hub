@@ -3,8 +3,7 @@
 Full-repo review, 2026-09-10. Validator overhaul, timestamp helper dedupe and the
 alignment-skew guard were done directly the same day (see "Done" below). Each ticket is self-contained: problem, file:line
 references, concrete fix, acceptance criteria, tests to add. Work them top to bottom;
-T01 first because every other ticket's "Tests" section depends on it — except T14
-step 0 (import rename), which is needed before anything can even be imported.
+T01 first because every other ticket's "Tests" section depends on it.
 
 | # | Title | Prio | Effort | Type |
 |---|-------|------|--------|------|
@@ -18,7 +17,7 @@ step 0 (import rename), which is needed before anything can even be imported.
 | [T11](T11-last-will-offline-health.md) | Last Will so `energy/health` goes offline when hub dies | P2 | XS | robustness |
 | [T12](T12-anker-alive-semantics.md) | `anker_plugin_alive` true before connected; expose errors | P2 | S | bug |
 | [T13](T13-anker-partial-snapshot.md) | Anker bridge withholds meter data if solarbank absent | P2 | XS | bug |
-| [T14](T14-anker-optional-import-and-dependency-pin.md) | **Plugin imports `api.*` but lib 3.8.x is `anker_solix_api`** → hub cannot import; sibling-path dep | **P0** | S | packaging |
+| [T14](T14-anker-optional-import-and-dependency-pin.md) | Pin anker-solix-api to a git rev (import compat already done) | P3 | XS | packaging |
 | [T15](T15-anker-plugin-guards.md) | Anker plugin: shutdown traceback, ms timestamps, callback guard | P3 | S | robustness |
 | [T16](T16-evcc-dead-source-contract.md) | Dead sources published as `0` to evcc → publish `null` (decided) | P2 | M | design |
 | [T17](T17-config-validation-and-cleanup.md) | Config: unknown keys, unused key, stale-policy semantics | P3 | S | quality |

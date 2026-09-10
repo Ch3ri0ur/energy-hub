@@ -21,12 +21,30 @@ from typing import Any
 
 from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
-from api.api import AnkerSolixApi
-from api.errors import AnkerSolixError
 
 from .config import AnkerConfig
 
 logger = logging.getLogger("energy_hub.anker")
+
+
+def _load_api() -> tuple[type, type[Exception]]:
+    """Import the Anker library lazily, supporting both package layouts.
+
+    anker-solix-api >= 3.8 ships the package as ``anker_solix_api``; 3.5.x
+    (still deployed) used the top-level name ``api``.  Returns
+    ``(AnkerSolixApi, AnkerSolixError)``.  Raises ImportError if neither is
+    installed, so the rest of the hub keeps running without the library.
+    """
+    try:
+        from anker_solix_api.api import AnkerSolixApi
+        from anker_solix_api.errors import AnkerSolixError
+        layout = "anker_solix_api (>= 3.8)"
+    except ImportError:
+        from api.api import AnkerSolixApi  # type: ignore[no-redef]
+        from api.errors import AnkerSolixError  # type: ignore[no-redef]
+        layout = "api (3.5.x)"
+    logger.info("Anker library loaded: %s", layout)
+    return AnkerSolixApi, AnkerSolixError
 
 SMART_METER_MODEL = "A17X7"
 SOLARBANK_MODEL = "A17C5"
@@ -262,10 +280,11 @@ async def _run_bridge(
     cfg: AnkerConfig,
     local_publish,
     stop_event: asyncio.Event,
+    api_cls: type,
 ) -> None:
     """One attempt at Anker auth + MQTT session + poller loop."""
     async with ClientSession() as ws:
-        api = AnkerSolixApi(cfg.user, cfg.password, cfg.country, ws, logger)
+        api = api_cls(cfg.user, cfg.password, cfg.country, ws, logger)
         if await api.async_authenticate():
             logger.info("Anker cloud auth: OK")
         else:
@@ -404,6 +423,13 @@ class AnkerPlugin:
 
     def _run_thread(self) -> None:
         """Background thread: retry loop with exponential backoff."""
+        try:
+            api_cls, anker_error = _load_api()
+        except ImportError as exc:
+            self._last_error = f"anker-solix-api not installed: {exc}"
+            logger.error("Anker plugin disabled: %s", self._last_error)
+            return
+
         backoff = self.BACKOFF_MIN
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -423,7 +449,7 @@ class AnkerPlugin:
                     self._alive = True
                     self._last_error = ""
                     loop.run_until_complete(
-                        _run_bridge(self._cfg, self._publish_snapshot, stop_async)
+                        _run_bridge(self._cfg, self._publish_snapshot, stop_async, api_cls)
                     )
                     if self._stop.is_set():
                         break
@@ -434,7 +460,7 @@ class AnkerPlugin:
                     ClientError,
                     TimeoutError,
                     OSError,
-                    AnkerSolixError,
+                    anker_error,
                     LookupError,
                     ConnectionError,
                     RuntimeError,

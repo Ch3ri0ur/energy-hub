@@ -13,6 +13,10 @@ dependencies = [
     "aiohttp>=3.9",
     "python-dotenv>=1.0",
     "anker-solix-api",
+    # anker-solix-api declares its dependencies only for poetry, which uv cannot
+    # read from the editable path source, so list them here explicitly.
+    "aiofiles>=25.1",
+    "cryptography>=42",
 ]
 
 [tool.setuptools.packages.find]

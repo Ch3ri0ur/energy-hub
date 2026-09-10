@@ -1,6 +1,11 @@
 # T14: Hub cannot start without the Anker library even when Anker is disabled; dependency is a sibling-path checkout
 
-**Priority:** P0 (hub does not start against the current library checkout) | **Effort:** S | **Area:** packaging, anker plugin
+**Priority:** P3 (remaining: git pin only) | **Effort:** XS | **Area:** packaging
+
+**Status 2026-09-10:** steps 0–2 done (lazy `_load_api()` supporting both layouts, lazy
+import in `main.py`, `aiofiles`/`cryptography` added explicitly). Only step 3 (pin a git
+rev instead of the sibling path) and step 4 remain, to be done when production is
+upgraded to 3.8.x.
 
 ## Problem
 0. **Confirmed breakage (2026-09-10):** the sibling checkout `../anker-solix-api` is now
