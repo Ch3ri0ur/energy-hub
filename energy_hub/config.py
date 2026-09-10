@@ -238,7 +238,7 @@ def load_config(path: str | Path = "config.yaml", env_file: str | Path | None = 
     raw: dict[str, Any] = {}
     if path.exists():
         try:
-            with open(path) as f:
+            with path.open() as f:
                 raw = yaml.safe_load(f) or {}
         except yaml.YAMLError as exc:
             raise ValueError(f"config: {path} is not valid YAML: {exc}") from exc

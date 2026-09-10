@@ -2,19 +2,19 @@
 
 Full-repo review, 2026-09-10. Validator overhaul, timestamp helper dedupe and the
 alignment-skew guard were done directly the same day (see "Done" below). Each ticket is self-contained: problem, file:line
-references, concrete fix, acceptance criteria, tests to add. Everything except the row below was implemented the same day (commits
-b6a9a32..57f5e16); T01 was closed on the follow-up pass.
+references, concrete fix, acceptance criteria, tests to add. Everything was implemented the same day (commits b6a9a32..57f5e16); T01 and T14
+were closed on the follow-up pass, so no ticket is open.
 
 | # | Title | Prio | Effort | Type |
 |---|-------|------|--------|------|
-| [T14](T14-anker-optional-import-and-dependency-pin.md) | Pin anker-solix-api to a git rev (import compat already done) | P3 | XS | packaging |
 
 Done directly (2026-09-10), no ticket needed:
 - Validator overhaul → `energy_hub/validation.py` (bounds / first-reading floor / monotonic / rate; held-for-confirmation for counter jumps and power jumps > 3 kW, so single garbage values never reach the output and a poisoned baseline recovers in two readings; forced re-baseline after N failures as backstop; device time never rejects, clock offset tracked). Superseded T06, T07.
 - `energy_hub/timeutil.py` single ISO parser (was T20); ruff import fixes.
 - Alignment hardening (was T09): `max_alignment_skew` guard, fallback to current reading instead of oldest history entry, device time only trusted while in sync with host.
 - pytest/ruff scaffolding and the test suite (T01).
-- Anker import compatibility for both library layouts (T14 steps 0–2).
+- Anker import compatibility for both library layouts, dependency pinned to an
+  upstream git commit so a fresh clone installs (T14).
 - Gas tracker: documented sync key, no phantom impulse on start/retained messages, atomic state file, retained sync cleared, publish on connect and on battery change (T02–T05).
 - Grid failover: energy counters stay on the Tasmota meter (`energy_source`/`energy_stale` fields), stale readings used symmetrically, fail-back hysteresis via `sources.tasmota_grid.failback_after`, alert backoff survives recovery, `grid_tasmota_stale` info issue while Anker covers, per-issue recovery messages (T08, T25, T26).
 - MQTT: connect_async with automatic reconnect (broker down at boot no longer crashes the hub), wildcard-capable routing via message_callback_add, Last Will + clean-shutdown offline health payload, retained charger messages ignored (T10, T11, T24).

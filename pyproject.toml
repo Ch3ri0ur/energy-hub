@@ -26,10 +26,14 @@ include = ["energy_hub*"]
 energy-hub = "energy_hub.main:main"
 
 [tool.uv.sources]
-anker-solix-api = { path = "../anker-solix-api", editable = true }
+# Pinned to a commit of the upstream repo so a fresh clone installs without a
+# sibling checkout. To develop against a local checkout, swap the two lines and
+# run `uv lock` (do not commit that lock).
+anker-solix-api = { git = "https://github.com/thomluther/anker-solix-api", rev = "77a0f887a3b8c25680c91015a65c5a4525e62857" }
+# anker-solix-api = { path = "../anker-solix-api", editable = true }
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10", "types-PyYAML"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -39,5 +43,22 @@ target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "B", "UP", "I"]
-ignore = ["E501"]  # long lines in pre-existing code; tidy per file when touched
+select = ["E", "F", "B", "UP", "I", "SIM", "PTH", "RUF", "C4", "PIE", "DTZ"]
+ignore = [
+    "E501",    # long lines in pre-existing code; tidy per file when touched
+    "SIM108",  # ternaries are not always clearer
+    "RUF012",  # mutable class attributes are used deliberately (constants)
+    "RUF002", "RUF003",  # en dashes and × in prose comments are fine
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["DTZ"]   # tests build naive local timestamps on purpose (Tasmota sends them)
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["energy_hub"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true   # anker_solix_api / api (3.5.x) ship no type information

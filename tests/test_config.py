@@ -27,9 +27,9 @@ def test_coercion(tmp_path):
 
 
 def test_bad_values_fail_loudly(tmp_path):
-    with pytest.raises(ValueError, match="output.retain"):
+    with pytest.raises(ValueError, match=r"output\.retain"):
         load_config(write(tmp_path, {"output": {"retain": "maybe"}}), env_file=None)
-    with pytest.raises(ValueError, match="validation.max_power"):
+    with pytest.raises(ValueError, match=r"validation\.max_power"):
         load_config(write(tmp_path, {"validation": {"max_power": "lots"}}), env_file=None)
 
 

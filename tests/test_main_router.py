@@ -40,7 +40,7 @@ def test_routes_only_configured_topics():
 
 
 def test_wildcard_topic_matches_with_paho_semantics():
-    routes, _ = make()
+    _routes, _ = make()
     assert mqtt.topic_matches_sub("tele/+/SENSOR", "tele/tasmota_pv/SENSOR")
 
 

@@ -84,7 +84,7 @@ def test_sync_legacy_key(tracker):
 
 
 def test_sync_negative_and_garbage_ignored(tracker, caplog):
-    t, c = tracker
+    t, _c = tracker
     sync(tracker, b'{"volume_m3": 100.5}')
     with caplog.at_level(logging.WARNING):
         sync(tracker, b'{"volume_m3": -1}')
@@ -126,7 +126,7 @@ def test_publish_on_demand_includes_battery(tracker):
 
 
 def test_battery_change_publishes_without_impulse(tracker):
-    t, c = tracker
+    _t, c = tracker
     contact(tracker, False, battery=100)
     n = len(c.topics(PUB))
     contact(tracker, False, battery=90)
@@ -137,7 +137,7 @@ def test_battery_change_publishes_without_impulse(tracker):
 
 
 def test_non_utf8_and_non_object_payloads_ignored(tracker):
-    t, client = tracker
+    t, _client = tracker
     for raw in (b"\xff\xfe", b"42", b"[1]", b"not json"):
         t.on_message(None, None, FakeMessage(IMP, raw))
         t.on_message(None, None, FakeMessage(SYNC, raw))

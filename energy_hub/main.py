@@ -8,7 +8,9 @@ import logging.handlers
 import signal
 import sys
 import time
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
 import paho.mqtt.client as mqtt
 
@@ -25,6 +27,8 @@ from .publisher import Publisher
 logger = logging.getLogger("energy_hub")
 
 EX_CONFIG = 78   # sysexits.h: configuration error
+
+MessageCallback = Callable[[mqtt.Client, Any, mqtt.MQTTMessage], None]
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +65,7 @@ def _setup_logging(cfg: AppConfig) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _guarded(topic: str, callback):
+def _guarded(topic: str, callback: MessageCallback) -> MessageCallback:
     """Wrap a paho message callback so an exception can never escape.
 
     paho re-raises callback exceptions (``suppress_exceptions`` is False by
@@ -80,7 +84,7 @@ def _guarded(topic: str, callback):
     return wrapper
 
 
-def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, object]:
+def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, MessageCallback]:
     """Return {topic: callback} mapping for local MQTT subscriptions.
 
     Every callback is wrapped by :func:`_guarded`.
@@ -113,7 +117,7 @@ def _build_router(cfg: AppConfig, engine: Engine, gas: GasTracker) -> dict[str, 
         if power is not None:
             engine.update_charger(power)
 
-    routes: dict[str, object] = {}
+    routes: dict[str, MessageCallback] = {}
     if cfg.sources.tasmota_pv.topic:
         routes[cfg.sources.tasmota_pv.topic] = on_pv
     if cfg.sources.tasmota_grid.topic:

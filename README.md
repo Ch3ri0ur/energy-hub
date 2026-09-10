@@ -122,9 +122,12 @@ password are set.
 ## Running
 
 ```sh
-uv sync --frozen            # anker-solix-api is expected at ../anker-solix-api (see pyproject)
+uv sync --frozen            # anker-solix-api comes from the git commit pinned in pyproject.toml
 uv run energy-hub -c config.yaml
 ```
+
+To hack on the Anker library itself, swap the two `anker-solix-api` lines under
+`[tool.uv.sources]` to the local path and run `uv lock` (do not commit that lock).
 
 ## Deployment
 
@@ -135,11 +138,11 @@ Files: `energy-hub.service` (systemd, hardened, `uv run --frozen --no-sync`),
 First install on the box (user `chriu`, paths as in the unit):
 
 ```sh
-git clone <this repo> ~/energy-hub && git clone <anker-solix-api> ~/anker-solix-api
-cd ~/energy-hub && uv sync --frozen
+git clone <this repo> ~/energy-hub
+cd ~/energy-hub && uv sync --frozen        # fetches the pinned anker-solix-api commit
 cp .env.example .env && chmod 600 .env && $EDITOR .env
 sudo install -d -o chriu -g chriu -m 750 /var/lib/energy-hub        # gas_state.json lives here
-mkdir -p ~/anker-solix-api/src/anker_solix_api/authcache            # or api/authcache for 3.5.x
+mkdir -p "$(uv run python -c 'import anker_solix_api, os; print(os.path.dirname(anker_solix_api.__file__))')/authcache"
 sudo cp energy-hub.service /etc/systemd/system/ && sudo systemctl daemon-reload
 sudo systemctl enable --now energy-hub
 journalctl -u energy-hub -f
@@ -169,9 +172,12 @@ that day. Sync when the counter drifts, not as a habit.
 ## Development
 
 ```sh
-uv sync --group dev
+uv sync --frozen --group dev
 uv run pytest
 uv run ruff check energy_hub tests
+uv run mypy energy_hub
 ```
+
+The same three commands run in CI (`.github/workflows/ci.yml`).
 
 Open work is tracked in `tickets/`.

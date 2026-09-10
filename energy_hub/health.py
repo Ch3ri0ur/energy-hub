@@ -28,7 +28,7 @@ ISSUES: dict[str, tuple[str, str]] = {
 
 
 def _describe(issue: str, context: dict[str, Any]) -> str:
-    severity, msg = ISSUES.get(issue, ("warning", issue))
+    _, msg = ISSUES.get(issue, ("warning", issue))
     if issue == "anker_plugin_down":
         err = (context.get("anker_plugin") or {}).get("last_error")
         if err:
@@ -172,7 +172,7 @@ class AlertManager:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urllib.request.urlopen(req, timeout=5).read()  # noqa: S310
+            urllib.request.urlopen(req, timeout=5).read()
         except (urllib.error.URLError, OSError, ValueError) as exc:   # ValueError: bad URL
             logger.error("Webhook failed: %s", exc)
 

@@ -47,10 +47,10 @@ CapabilityBoundingSet=
 UMask=0077
 # anker-solix-api caches its cloud login token inside its own package directory
 # (falls back to a private /tmp otherwise, i.e. a fresh login on every start).
-# Both layouts listed; missing paths are ignored (leading "-"). Create the one
-# for the installed version: mkdir -p <path>.
-ReadWritePaths=-/home/chriu/anker-solix-api/api/authcache
-ReadWritePaths=-/home/chriu/anker-solix-api/src/anker_solix_api/authcache
+# The library is installed into the project venv; create the directory once
+# (see README "Deployment"). A missing path is ignored (leading "-").
+ReadWritePaths=-/home/chriu/energy-hub/.venv/lib/python3.12/site-packages/anker_solix_api/authcache
+ReadWritePaths=-/home/chriu/energy-hub/.venv/lib/python3.13/site-packages/anker_solix_api/authcache
 
 [Install]
 WantedBy=multi-user.target

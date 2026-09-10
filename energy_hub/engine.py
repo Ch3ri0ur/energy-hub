@@ -7,7 +7,7 @@ import threading
 import time
 from collections import deque
 from functools import wraps
-from typing import Any
+from typing import Any, TypeVar
 
 from .adapters.base import AnkerGridReading, SensorReading, SolarbankReading
 from .config import AppConfig
@@ -15,6 +15,8 @@ from .timeutil import parse_iso_epoch
 from .validation import SensorValidator
 
 logger = logging.getLogger("energy_hub.engine")
+
+Reading = TypeVar("Reading", SensorReading, AnkerGridReading, SolarbankReading)
 
 
 def _locked(method):
@@ -73,7 +75,7 @@ class Engine:
     def update_pv(self, reading: SensorReading) -> None:
         ok, msg = self._validator.validate(reading, "pv")
         if not ok:
-            logger.log(logging.INFO if msg.startswith("held:") else logging.WARNING, "PV reading: %s", msg)
+            logger.log(logging.INFO if (msg or "").startswith("held:") else logging.WARNING, "PV reading: %s", msg)
             return
         self.pv_roof = reading
         self._pv_history.append(reading)
@@ -83,7 +85,7 @@ class Engine:
         expected_jump = self._current_charger_power() - self._charger_at_last_grid
         ok, msg = self._validator.validate(reading, "grid", expected_jump=expected_jump)
         if not ok:
-            logger.log(logging.INFO if msg.startswith("held:") else logging.WARNING, "Grid reading: %s", msg)
+            logger.log(logging.INFO if (msg or "").startswith("held:") else logging.WARNING, "Grid reading: %s", msg)
             return
         prev = self.grid_tasmota
         if prev is None or reading.received_at - prev.received_at > self._cfg.sources.tasmota_grid.stale_timeout:
@@ -151,21 +153,23 @@ class Engine:
         feed again, so a reader with flaky WiFi does not flap between meters.
         """
         cfg = self._cfg.sources
-        tasmota_fresh = self.grid_tasmota is not None and not self._grid_is_stale(self.grid_tasmota)
-        anker_fresh = self.grid_anker is not None and self.grid_anker.age() <= cfg.anker.stale_timeout
+        tasmota, anker = self.grid_tasmota, self.grid_anker
+        tasmota_fresh = tasmota is not None and not self._grid_is_stale(tasmota)
+        anker_fresh = anker is not None and anker.age() <= cfg.anker.stale_timeout
 
-        if tasmota_fresh and self._active_grid_source == "anker" and anker_fresh:
-            run = self.grid_tasmota.received_at - self._tasmota_fresh_since
+        if tasmota is not None and anker is not None and tasmota_fresh and anker_fresh \
+                and self._active_grid_source == "anker":
+            run = tasmota.received_at - self._tasmota_fresh_since
             if run < cfg.tasmota_grid.failback_after:
-                return self.grid_anker.to_sensor_reading(), "anker"  # hold until the run is long enough
+                return anker.to_sensor_reading(), "anker"  # hold until the run is long enough
 
-        if tasmota_fresh:
+        if tasmota is not None and tasmota_fresh:
             self._switch_grid_source("tasmota")
-            return self.grid_tasmota, "tasmota"
+            return tasmota, "tasmota"
 
-        if anker_fresh:
+        if anker is not None and anker_fresh:
             self._switch_grid_source("anker", "tasmota stale")
-            return self.grid_anker.to_sensor_reading(), "anker"
+            return anker.to_sensor_reading(), "anker"
 
         # Neither is fresh: use whichever stale reading is newer (snapshot() zeroes it
         # once it exceeds the grace deadline).
@@ -177,7 +181,7 @@ class Engine:
         if candidates:
             _, name, reading = max(candidates, key=lambda c: c[0])
             self._switch_grid_source(name, "both stale")
-            return (reading if name == "tasmota" else reading.to_sensor_reading()), name
+            return (reading.to_sensor_reading() if isinstance(reading, AnkerGridReading) else reading), name
 
         self._active_grid_source = ""
         return None, ""
@@ -206,18 +210,21 @@ class Engine:
     ) -> float | None:
         if reading is None:
             return None
-        if isinstance(reading, SensorReading) and reading.source in ("pv", "grid"):
-            # Only trust the device clock while it agrees with the host clock.
-            if self._validator.device_time_trusted(reading.source):
-                return parse_iso_epoch(reading.timestamp) or reading.received_at
+        # Only trust the device clock while it agrees with the host clock.
+        if (
+            isinstance(reading, SensorReading)
+            and reading.source in ("pv", "grid")
+            and self._validator.device_time_trusted(reading.source)
+        ):
+            return parse_iso_epoch(reading.timestamp) or reading.received_at
         return reading.received_at
 
     def _aligned_reading(
         self,
-        history: deque,
-        current: SensorReading | AnkerGridReading | SolarbankReading | None,
+        history: deque[Reading],
+        current: Reading | None,
         reference_time: float | None,
-    ) -> SensorReading | AnkerGridReading | SolarbankReading | None:
+    ) -> Reading | None:
         if current is None or reference_time is None or not history:
             return current
         skew = self._cfg.validation.max_alignment_skew

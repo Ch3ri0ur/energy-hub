@@ -191,11 +191,11 @@ class GasTracker:
         """Write the state atomically (temp file + rename) so a crash cannot truncate it."""
         tmp = self._state_path.with_name(self._state_path.name + ".tmp")
         try:
-            with open(tmp, "w") as f:
+            with tmp.open("w") as f:
                 json.dump({"impulse_count": self._impulse_count, "updated": int(time.time())}, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())   # the rename must not land before the content does
-            os.replace(tmp, self._state_path)
+            tmp.replace(self._state_path)
         except Exception as exc:
             logger.error("GasTracker: failed to save state: %s", exc)
 

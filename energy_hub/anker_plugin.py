@@ -41,8 +41,8 @@ def _load_api() -> tuple[type, type[Exception]]:
         from anker_solix_api.errors import AnkerSolixError
         layout = "anker_solix_api (>= 3.8)"
     except ImportError:
-        from api.api import AnkerSolixApi  # type: ignore[no-redef]
-        from api.errors import AnkerSolixError  # type: ignore[no-redef]
+        from api.api import AnkerSolixApi
+        from api.errors import AnkerSolixError
         layout = "api (3.5.x)"
     logger.info("Anker library loaded: %s", layout)
     return AnkerSolixApi, AnkerSolixError
