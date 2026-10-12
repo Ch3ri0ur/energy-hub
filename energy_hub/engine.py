@@ -16,6 +16,9 @@ from .validation import SensorValidator
 
 logger = logging.getLogger("energy_hub.engine")
 
+# Below this the last known power of a dead source counts as "still ~0", see snapshot().
+_MATERIAL_W = 25.0
+
 Reading = TypeVar("Reading", SensorReading, AnkerGridReading, SolarbankReading)
 
 
@@ -334,16 +337,13 @@ class Engine:
         grid_stale, grid_dead = self._freshness(latest_grid, grid_stale_timeout)
         grid_power = 0.0 if grid_dead or grid_reading is None else grid_reading.power
 
-        # Cumulative energy counters always come from the official (Tasmota SML) meter
-        # when it has ever reported: a counter that pauses during an outage and then
-        # jumps forward is correct, whereas switching to the Anker meter's own lifetime
-        # totals would produce a step of tens of thousands of kWh in evcc and Grafana.
+        # Cumulative energy counters only ever come from the official (Tasmota SML) meter:
+        # a counter that pauses during an outage and then jumps forward is correct, whereas
+        # the Anker meter's own lifetime totals (or 0.0 before the first reading) would
+        # produce steps of tens of thousands of kWh in Grafana.  None until Tasmota reported.
         if self.grid_tasmota is not None:
             energy_reading, energy_source = self.grid_tasmota, "tasmota"
             energy_stale = self._grid_is_stale(self.grid_tasmota)
-        elif self.grid_anker is not None:
-            energy_reading, energy_source = self.grid_anker.to_sensor_reading(), "anker"
-            energy_stale = self.grid_anker.age() > self._cfg.sources.anker.stale_timeout
         else:
             energy_reading, energy_source, energy_stale = None, "", True
 
@@ -354,6 +354,8 @@ class Engine:
         # Solarbank / balcony: sb_live is the aligned sample, or None once dead
         sb_stale, sb_zeroed = self._freshness(self.solarbank, self._cfg.sources.anker.stale_timeout)
         sb_live = None if sb_zeroed else sb
+        # A setup without a Solarbank (no Anker credentials, never a reading) has nothing to miss.
+        sb_expected = self._cfg.anker.enabled or self.solarbank is not None
         sb_output = sb_live.output_power if sb_live else 0.0
         sb_generation = sb_live.photovoltaic_power if sb_live else 0.0
         sb_pv_1_power = sb_live.pv_1_power if sb_live else 0.0
@@ -368,6 +370,20 @@ class Engine:
         charger_sample, charger_sample_time = self._aligned_charger_sample(reference_time)
         charger_stale = (now - charger_sample_time) > self._cfg.sources.charger.stale_timeout if charger_sample_time else True
         charger = charger_sample if not charger_stale else 0.0
+
+        # The house balance needs every AC-bus source: with one of them zeroed, consumption and
+        # house load would be off by that source's power, so they are flagged dead (and the
+        # publisher drops them) instead of being published wrong.
+        # A dead source whose last known power was ~0 (roof PV at night, a Solarbank switched off
+        # for the winter, an idle charger) most likely still delivers ~0: keep the balance then,
+        # otherwise those would be gaps of hours or weeks.  Never reported = unknown = missing.
+        pv_missing = pv_dead and (self.pv_roof is None or abs(self.pv_roof.power) > _MATERIAL_W)
+        sb_missing = sb_zeroed and sb_expected and (
+            self.solarbank is None
+            or max(abs(self.solarbank.output_power), abs(self.solarbank.ac_output_power_signed)) > _MATERIAL_W
+        )
+        charger_missing = charger_stale and (not self.charger_received_at or abs(self.charger_power) > _MATERIAL_W)
+        balance_dead = grid_dead or pv_missing or sb_missing
 
         # The Solarbank 3 also charges from AC (roof surplus or grid) through its output cable: then
         # output_power is 0 and ac_output_power_signed is negative. That draw is a load on the AC bus that
@@ -411,8 +427,8 @@ class Engine:
                 "power": round(grid_power, 1),          # net: positive=import, negative=export
                 "import_w": round(grid_import, 1),      # always positive when importing
                 "export_w": round(grid_export, 1),      # always positive when exporting
-                "energy_import": round(energy_reading.energy_import, 3) if energy_reading else 0.0,
-                "energy_export": round(energy_reading.energy_export, 3) if energy_reading else 0.0,
+                "energy_import": round(energy_reading.energy_import, 3) if energy_reading else None,
+                "energy_export": round(energy_reading.energy_export, 3) if energy_reading else None,
                 "energy_source": energy_source,   # meter the counters come from (normally "tasmota")
                 "energy_stale": energy_stale,
                 "source": grid_source,            # meter the power comes from
@@ -422,7 +438,7 @@ class Engine:
             # PV roof
             "pv_roof": {
                 "power": round(pv_power, 1),
-                "energy": round(self.pv_roof.energy_import, 3) if self.pv_roof else 0.0,
+                "energy": round(self.pv_roof.energy_import, 3) if self.pv_roof else None,
                 "stale": pv_stale,
                 "dead": pv_dead,
             },
@@ -442,7 +458,7 @@ class Engine:
                 "power": round(total_pv, 1),                       # AC-bus contribution (house balance)
                 "generation": round(pv_total_generation, 1),       # actual panel output (roof + balcony panels)
                 "stale": pv_stale or sb_stale,
-                "dead": pv_dead and sb_zeroed,                     # no PV source delivering at all
+                "dead": pv_missing or sb_missing,                  # sum incomplete
             },
             # Battery
             "battery": {
@@ -463,16 +479,17 @@ class Engine:
                 "stale": charger_stale,
                 "dead": charger_stale,   # charger has no grace period: stale = zeroed
             },
-            # House load (derived from grid; meaningless without a grid reading)
+            # House load (derived from grid + PV + Solarbank − charger; meaningless without any of them)
             "house": {
                 "power": round(house_load, 1),
                 "stale": grid_stale,
-                "dead": grid_dead,
+                "dead": balance_dead or charger_missing,
             },
-            # Totals
+            # Totals (derived from grid + PV + Solarbank)
             "consumption": round(total_consumption, 1),
             "self_consumption_pct": self_consumption_pct,
             "self_sufficiency_pct": self_sufficiency_pct,
+            "balance_dead": balance_dead,
             "timestamp": now,
         }
 

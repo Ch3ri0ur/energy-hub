@@ -102,11 +102,50 @@ def test_energy_counters_stay_on_tasmota_during_failover():
     assert s["energy_import"] == 42001.0 and s["energy_source"] == "tasmota" and s["energy_stale"] is True
 
 
-def test_energy_counters_from_anker_only_without_tasmota():
+def test_energy_counters_never_from_anker():
+    """Before Tasmota's first reading the counters are unknown, not the Anker lifetime totals or 0."""
     e = Engine(AppConfig())
     e.update_grid_anker(anker(250.0, time.time()))
-    s = e.snapshot()["grid"]
-    assert s["energy_import"] == 512.0 and s["energy_source"] == "anker" and s["energy_stale"] is False
+    s = e.snapshot()
+    assert s["grid"]["power"] == 250.0
+    assert s["grid"]["energy_import"] is None and s["grid"]["energy_export"] is None
+    assert s["grid"]["energy_source"] == "" and s["grid"]["energy_stale"] is True
+    assert s["pv_roof"]["energy"] is None                      # roof never reported
+
+
+def test_missing_source_makes_balance_dead():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))
+    e.update_pv(pv(1000.0, now))
+    e.update_charger(0.0)
+    s = e.snapshot()
+    assert s["balance_dead"] is False and s["house"]["dead"] is False   # no Solarbank configured or seen
+    assert s["pv_total"]["dead"] is False
+    e.update_solarbank(SolarbankReading(output_power=300.0, received_at=now - 400))  # seen once, now dead
+    s = e.snapshot()
+    assert s["balance_dead"] is True and s["house"]["dead"] is True and s["pv_total"]["dead"] is True
+    assert s["house"]["stale"] is False                        # grid itself is fine
+
+
+def test_anker_enabled_requires_solarbank_for_balance():
+    cfg = AppConfig()
+    cfg.anker.user, cfg.anker.password = "u", "p"
+    e = Engine(cfg)
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))
+    e.update_pv(pv(1000.0, now))
+    e.update_charger(0.0)
+    assert e.snapshot()["balance_dead"] is True               # Solarbank expected but not reported yet
+
+
+def test_dead_charger_makes_house_dead_but_not_balance():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))
+    e.update_pv(pv(1000.0, now))
+    s = e.snapshot()                                           # charger never reported
+    assert s["balance_dead"] is False and s["house"]["dead"] is True and s["consumption"] == 1500.0
 
 
 def test_stale_anker_used_when_tasmota_never_reported():
@@ -401,3 +440,31 @@ def test_update_anker_applies_both_halves():
     e.update_anker(anker(250.0, now), SolarbankReading(output_power=100.0, received_at=now))
     e.update_anker(None, SolarbankReading(output_power=120.0, received_at=now))
     assert e.grid_anker.net_grid_power == 250.0 and e.solarbank.output_power == 120.0
+
+
+def test_dead_source_last_seen_at_zero_keeps_balance():
+    """Roof PV at night, Solarbank off for the winter, idle charger: dead but last known ~0 W."""
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(400.0, now))
+    e.update_pv(pv(0.0, now - 400))
+    e.update_solarbank(SolarbankReading(output_power=0.0, ac_output_power_signed=0.0, received_at=now - 4000))
+    e.charger_power, e.charger_received_at = 0.0, now - 400
+    s = e.snapshot()
+    assert s["pv_roof"]["dead"] and s["battery"]["dead"] and s["charger"]["dead"]
+    assert s["balance_dead"] is False and s["house"]["dead"] is False and s["pv_total"]["dead"] is False
+    assert s["house"]["power"] == 400.0 and s["consumption"] == 400.0
+
+
+def test_dead_source_last_seen_delivering_makes_balance_dead():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(400.0, now))
+    e.update_pv(pv(0.0, now))
+    e.update_solarbank(SolarbankReading(output_power=0.0, ac_output_power_signed=-900.0, received_at=now - 400))
+    e.charger_power, e.charger_received_at = 0.0, now
+    assert e.snapshot()["balance_dead"] is True                # was AC charging: unknown now
+    e.update_solarbank(SolarbankReading(output_power=0.0, ac_output_power_signed=0.0, received_at=now))
+    e.charger_power, e.charger_received_at = 3000.0, now - 400  # car was charging
+    s = e.snapshot()
+    assert s["balance_dead"] is False and s["house"]["dead"] is True

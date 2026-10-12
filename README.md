@@ -30,9 +30,10 @@ Every section carries two flags:
 
 - `stale` – the source's last reading is older than its `stale_timeout`
   (`sources.*.stale_timeout`). The last value is still used.
-- `dead` – older than `stale_policy.zero_after`. The value is zeroed in
-  `energy/aggregated` (numbers for Telegraf) and published as **`null`** on the
-  per-topic payloads so evcc's jq fails loudly instead of reading a fabricated 0.
+- `dead` – older than `stale_policy.zero_after`. The value is published as **`null`** on the
+  per-topic payloads so evcc's jq fails loudly instead of reading a fabricated 0, and
+  **omitted** from `energy/aggregated` so Telegraf stores a gap instead of a fake 0
+  (SoC 0 %, self-sufficiency 100 %).
 
 ### Topics
 
@@ -41,19 +42,19 @@ Every section carries two flags:
 | field | meaning |
 |---|---|
 | `power`, `import_w`, `export_w` | net / import-only / export-only power (null when dead) |
-| `energy_import`, `energy_export` | cumulative counters, **always from the Tasmota SML meter** once it has reported, even while power comes from Anker (no step change on failover) |
-| `energy_source`, `energy_stale` | meter and freshness of the counters |
+| `energy_import`, `energy_export` | cumulative counters, **only from the Tasmota SML meter**, even while power comes from Anker (no step change on failover); null (omitted in `aggregated`) until Tasmota has reported |
+| `energy_source`, `energy_stale` | meter of the counters (`tasmota` or `""`) and their freshness |
 | `source` | meter the power comes from: `tasmota`, `anker` or `""` |
 | `stale`, `dead` | see above |
 
-`energy/pv/roof`: `power`, `energy` (counter), `stale`, `dead`.
+`energy/pv/roof`: `power`, `energy` (counter, null until the first reading), `stale`, `dead`.
 
 `energy/pv/balcony` (Solarbank): `power` (panel generation), `pv_1_power` … `pv_4_power`,
 `output_power` (what reaches the house, ≤ 800 W), `stale`, `dead`.
 
 `energy/pv/total`: `power` = roof + balcony *output* (AC side, for the house
 balance), `generation` = roof + balcony *panels*, `stale` (either source),
-`dead` (both sources).
+`dead` (either source dead: the sum is incomplete).
 
 `energy/battery`: `soc`, `power`, `charge_w`, `discharge_w`, `ac_charge_w` (part of the charging drawn
 from the AC bus, e.g. roof surplus; not counted as house load), `energy_wh`,
@@ -62,11 +63,25 @@ from the AC bus, e.g. roof surplus; not counted as house load), `energy_wh`,
 `energy/charger`: `power` (sample aligned with the other readings), `raw_power`
 (latest), `stale`, `dead`.
 
-`energy/house`: `power` = grid + pv_total − charger, `stale`, `dead` (follows grid).
+`energy/house`: `power` = grid + pv_total − AC charging − charger, `stale` (follows grid), `dead`
+(the balance is dead, or the charger is dead while its last known power was > 25 W).
 
 `energy/aggregated`: all of the above in one object plus `consumption`
-(= grid + pv_total), `self_consumption_pct`, `self_sufficiency_pct`, `timestamp`
-(unix). This is what Telegraf ingests.
+(= grid + pv_total − AC charging), `self_consumption_pct`, `self_sufficiency_pct`,
+`balance_dead` (grid dead, or roof PV / Solarbank dead while its last known power was > 25 W
+or it never reported — the three totals are then omitted; a dead source last seen at ~0 W, like
+roof PV at night or a Solarbank switched off for the winter, counts as still 0; the Solarbank only
+counts once Anker credentials are set or it has reported), `timestamp`
+(unix). This is what Telegraf ingests. Dead values, unknown counters and empty strings are
+omitted (keys missing, never null), so every Telegraf field needs `optional = true`.
+
+Field names in InfluxDB (measurement `energy`, see `docs/telegraf-energy.conf`): mostly
+`<section>_<key>` (`grid_power`, `pv_roof_power`, `battery_soc` …), with these renames:
+`grid.energy_import/export` → `grid_energy_in/out`, `grid.source` → `grid_power_source`,
+`pv_balcony.power` → `pv_balcony_generation`, `pv_balcony.output_power` → `pv_balcony_power`,
+`pv_total.generation` → `pv_generation`, `battery.charge_w/discharge_w/ac_charge_w` →
+`battery_charge/discharge/ac_charge`, `battery.state` → `battery_status`, `battery.stale/dead` →
+`solarbank_stale/dead`. Until 2026-10-12 `battery_state` and `grid_source` were tags.
 
 `energy/health` (every `output.health_interval` s, retained): `status`
 (`ok` / `degraded` / `offline`), `connected`, `uptime`, `issues`,

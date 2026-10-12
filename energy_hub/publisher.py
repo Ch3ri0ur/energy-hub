@@ -16,8 +16,9 @@ logger = logging.getLogger("energy_hub.publisher")
 
 # Fields that are set to null on the per-topic (evcc-facing) payloads when the
 # source is dead.  evcc reads these via jq; a null makes the meter fail loudly,
-# whereas the 0 kept in the aggregated blob (for Telegraf) would be taken as a
-# real reading and used for charging decisions.
+# whereas a 0 would be taken as a real reading and used for charging decisions.
+# The aggregated blob (for Telegraf) omits them instead (a missing key is a gap
+# for every consumer; a 0 would be stored as a real reading: SoC 0 %, SS 100 %).
 _NULL_WHEN_DEAD: dict[str, tuple[str, ...]] = {
     "grid": ("power", "import_w", "export_w"),
     "pv_roof": ("power",),
@@ -36,6 +37,27 @@ def _for_topic(section: dict[str, Any] | None, key: str) -> dict[str, Any] | Non
     out = dict(section)
     for field in _NULL_WHEN_DEAD.get(key, ()):
         out[field] = None
+    return out
+
+
+# Additionally omitted from the aggregated blob: placeholders of dead sources that
+# would otherwise be stored as a real state.
+_OMIT_WHEN_DEAD: dict[str, tuple[str, ...]] = {"battery": ("state",)}
+
+# Top-level fields derived from the full house balance (grid + PV + Solarbank).
+_BALANCE_FIELDS = ("consumption", "self_consumption_pct", "self_sufficiency_pct")
+
+
+def _for_telegraf(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Copy of a snapshot without the values of dead sources, unknown counters and
+    balance-derived totals that are incomplete.  Keys are omitted, never null."""
+    out: dict[str, Any] = {}
+    for key, value in snapshot.items():
+        if isinstance(value, dict):
+            dropped = (_NULL_WHEN_DEAD.get(key, ()) + _OMIT_WHEN_DEAD.get(key, ())) if value.get("dead") else ()
+            out[key] = {k: v for k, v in value.items() if k not in dropped and v is not None and v != ""}
+        elif value is not None and not (key in _BALANCE_FIELDS and snapshot.get("balance_dead")):
+            out[key] = value
     return out
 
 
@@ -103,8 +125,8 @@ class Publisher:
         self._pub(f"{prefix}/charger", _for_topic(snapshot.get("charger"), "charger"), retain)
         self._pub(f"{prefix}/house", _for_topic(snapshot.get("house"), "house"), retain)
 
-        # Full aggregated blob (for Telegraf / InfluxDB): always numeric
-        self._pub(f"{prefix}/aggregated", snapshot, retain, qos=self.TELEGRAF_QOS)
+        # Full aggregated blob (for Telegraf / InfluxDB): dead values omitted
+        self._pub(f"{prefix}/aggregated", _for_telegraf(snapshot), retain, qos=self.TELEGRAF_QOS)
 
         self._last_publish = time.time()
         logger.debug(
