@@ -290,6 +290,58 @@ def test_pv_total_generation_and_self_consumption_figures():
     assert b["soc"] == 55.0 and b["energy_wh"] == 1478.0
 
 
+def test_solarbank_ac_charging_is_not_house_load():
+    # Live values 2026-10-12: roof surplus charges the Solarbank over AC (output 0, AC −1200 W).
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(-1103.0, now))              # exporting
+    e.update_pv(pv(2700.0, now))
+    e.update_charger(0.0)
+    e.update_solarbank(SolarbankReading(
+        photovoltaic_power=1141.0, output_power=0.0, ac_output_power_signed=-1200.0,
+        grid_to_battery_power=1200.0, battery_power_signed=2341.0, battery_soc=75.0, received_at=now,
+    ))
+    s = e.snapshot()
+    assert s["battery"]["ac_charge_w"] == 1200.0 and s["battery"]["charge_w"] == 2341.0
+    assert s["consumption"] == 397.0                        # −1103 + 2700 − 1200, not 1597
+    assert s["house"]["power"] == 397.0
+    assert s["self_sufficiency_pct"] == 100.0
+
+
+def test_ac_charging_while_importing_is_not_self_supplied():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))                # importing
+    e.update_pv(pv(1500.0, now))
+    e.update_solarbank(SolarbankReading(output_power=0.0, ac_output_power_signed=-1200.0,
+                                        battery_power_signed=1200.0, received_at=now))
+    s = e.snapshot()
+    assert s["consumption"] == 800.0
+    assert s["self_sufficiency_pct"] == round(300 / 800 * 100, 1)
+
+
+def test_solarbank_discharge_subtracts_nothing():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(100.0, now))
+    e.update_solarbank(SolarbankReading(output_power=500.0, ac_output_power_signed=500.0,
+                                        battery_power_signed=-500.0, received_at=now))
+    s = e.snapshot()
+    assert s["battery"]["ac_charge_w"] == 0.0
+    assert s["consumption"] == 600.0 and s["house"]["power"] == 600.0
+
+
+def test_dead_solarbank_ac_charge_is_not_subtracted():
+    e = Engine(AppConfig())
+    now = time.time()
+    e.update_grid_tasmota(grid(500.0, now))
+    e.update_solarbank(SolarbankReading(output_power=0.0, ac_output_power_signed=-1200.0,
+                                        battery_power_signed=1200.0, received_at=now - 400))
+    s = e.snapshot()
+    assert s["battery"]["ac_charge_w"] == 0.0 and s["battery"]["dead"] is True
+    assert s["consumption"] == 500.0
+
+
 def test_dead_solarbank_zeroes_battery_and_balcony():
     e = Engine(AppConfig())
     now = time.time()
@@ -297,7 +349,8 @@ def test_dead_solarbank_zeroes_battery_and_balcony():
     e.update_solarbank(SolarbankReading(output_power=500.0, battery_soc=55.0, battery_power_signed=-200.0,
                                         received_at=now - 400))
     s = e.snapshot()
-    assert s["battery"] == {"soc": 0.0, "power": 0.0, "charge_w": 0.0, "discharge_w": 0.0, "energy_wh": 0.0,
+    assert s["battery"] == {"soc": 0.0, "power": 0.0, "charge_w": 0.0, "discharge_w": 0.0, "ac_charge_w": 0.0,
+                            "energy_wh": 0.0,
                             "state": "unknown", "stale": True, "dead": True}
     assert s["pv_balcony"]["output_power"] == 0.0 and s["pv_balcony"]["dead"] is True
     assert s["pv_total"]["dead"] is True                       # roof never reported, balcony dead

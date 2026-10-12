@@ -39,13 +39,13 @@ def test_dead_sources_publish_null_on_topics_but_zero_in_aggregated():
     c = FakeClient()
     snap = snapshot()
     snap["grid"] = {"power": 0.0, "import_w": 0.0, "export_w": 0.0, "energy_import": 42001.0, "stale": True, "dead": True}
-    snap["battery"] = {"soc": 0.0, "power": 0.0, "state": "unknown", "stale": True, "dead": True}
+    snap["battery"] = {"soc": 0.0, "power": 0.0, "ac_charge_w": 0.0, "state": "unknown", "stale": True, "dead": True}
     snap["pv_total"] = {"power": 0.0, "generation": 0.0, "stale": False, "dead": False}
     Publisher(c, OutputConfig()).publish_snapshot(snap)
     grid = json.loads(c.topics("energy/grid")[0].payload)
     assert grid["power"] is None and grid["import_w"] is None and grid["energy_import"] == 42001.0
     battery = json.loads(c.topics("energy/battery")[0].payload)
-    assert battery["soc"] is None and battery["state"] == "unknown"
+    assert battery["soc"] is None and battery["ac_charge_w"] is None and battery["state"] == "unknown"
     assert json.loads(c.topics("energy/pv/total")[0].payload)["power"] == 0.0     # not dead → numeric
     agg = json.loads(c.topics("energy/aggregated")[0].payload)
     assert agg["grid"]["power"] == 0.0 and agg["battery"]["soc"] == 0.0

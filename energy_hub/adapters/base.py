@@ -63,7 +63,7 @@ class SolarbankReading:
     battery_energy_wh: float = 0.0
     battery_capacity_wh: float = 0.0
     output_power: float = 0.0           # what reaches the house (≤800W)
-    ac_output_power_signed: float = 0.0
+    ac_output_power_signed: float = 0.0  # negative = Solarbank charging from the AC bus
     grid_to_battery_power: float = 0.0
     home_demand: float = 0.0
     temperature: float = 0.0

@@ -23,7 +23,7 @@ _NULL_WHEN_DEAD: dict[str, tuple[str, ...]] = {
     "pv_roof": ("power",),
     "pv_balcony": ("power", "output_power", "pv_1_power", "pv_2_power", "pv_3_power", "pv_4_power"),
     "pv_total": ("power", "generation"),
-    "battery": ("soc", "power", "charge_w", "discharge_w", "energy_wh"),
+    "battery": ("soc", "power", "charge_w", "discharge_w", "ac_charge_w", "energy_wh"),
     "charger": ("power", "raw_power"),
     "house": ("power",),
 }

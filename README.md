@@ -55,7 +55,8 @@ Every section carries two flags:
 balance), `generation` = roof + balcony *panels*, `stale` (either source),
 `dead` (both sources).
 
-`energy/battery`: `soc`, `power`, `charge_w`, `discharge_w`, `energy_wh`,
+`energy/battery`: `soc`, `power`, `charge_w`, `discharge_w`, `ac_charge_w` (part of the charging drawn
+from the AC bus, e.g. roof surplus; not counted as house load), `energy_wh`,
 `state` (`charging` / `discharging` / `idle` / `unknown`), `stale`, `dead`.
 
 `energy/charger`: `power` (sample aligned with the other readings), `raw_power`

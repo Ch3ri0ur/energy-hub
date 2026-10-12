@@ -369,9 +369,14 @@ class Engine:
         charger_stale = (now - charger_sample_time) > self._cfg.sources.charger.stale_timeout if charger_sample_time else True
         charger = charger_sample if not charger_stale else 0.0
 
+        # The Solarbank 3 also charges from AC (roof surplus or grid) through its output cable: then
+        # output_power is 0 and ac_output_power_signed is negative. That draw is a load on the AC bus that
+        # is neither house nor charger, so it must not end up in house_load.
+        sb_ac_charge = max(0.0, -sb_live.ac_output_power_signed) if sb_live else 0.0
+
         # Aggregation
         total_pv = pv_power + sb_output          # AC-bus contribution (what reaches the house)
-        total_consumption = grid_power + total_pv  # = house + charger
+        total_consumption = grid_power + total_pv - sb_ac_charge  # = house + charger
         house_load = total_consumption - charger
 
         # Pre-split fields for Grafana stacked charts (avoids transform overrides)
@@ -393,8 +398,10 @@ class Engine:
             self_consumption_pct = 0.0
 
         # Self-sufficiency: what fraction of total demand is covered by solar?
+        # (consumption − import, so grid power that went into the Solarbank is not counted as self-supplied)
         if total_consumption > 0:
-            self_sufficiency_pct = round(min(total_pv, total_consumption) / total_consumption * 100, 1)
+            self_supplied = min(max(0.0, total_consumption - grid_import), total_pv)
+            self_sufficiency_pct = round(self_supplied / total_consumption * 100, 1)
         else:
             self_sufficiency_pct = 0.0
 
@@ -443,6 +450,7 @@ class Engine:
                 "power": round(battery_power_val, 1),         # signed: positive=charging, negative=discharging
                 "charge_w": round(battery_charge, 1),        # always positive when charging
                 "discharge_w": round(battery_discharge, 1),  # always positive when discharging
+                "ac_charge_w": round(sb_ac_charge, 1),       # part of charge_w drawn from the AC bus
                 "energy_wh": round(sb_live.battery_energy_wh, 1) if sb_live else 0.0,
                 "state": battery_state,
                 "stale": sb_stale,
